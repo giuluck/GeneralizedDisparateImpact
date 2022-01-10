@@ -26,6 +26,9 @@ class CausalExclusion(SingleTargetRegression):
         #   v <= a @ theta, for i in {1, ..., N},
         # with <v> being the i-th element of the vector <V>, and <a> being the i-th row of the matrix <A>,
         # thus we can iterate the N pairs of variable/row and add the constraints accordingly
-        for v, a in zip(variables, x[self.excluded_features].values):
-            self.backend.add_constraint(v <= self.backend.sum(a * self.theta))
+        A = x[self.excluded_features].values
+        ATA = np.dot(A.T, A)
+
+        for i in range(len(self.excluded_features)):
+            self.backend.add_constraint(self.backend.sum(A.T[i] * variables) <= self.backend.sum(ATA[i] * self.theta))
         return variables
