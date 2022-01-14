@@ -1,53 +1,126 @@
 import numpy as np
 from moving_targets.masters import SingleTargetRegression
-
 from moving_targets.metrics import Metric
 from scipy.stats import pearsonr
 
 
-# noinspection PyUnusedLocal,PyPep8Naming
 class CausalExclusion(SingleTargetRegression):
-    def __init__(self, excluded_features, theta, backend='gurobi', alpha=1.0, beta=1.0, loss='mse', stats=True):
-        self.excluded_features, self.theta = list(excluded_features), np.array(theta)
+    """Causal Exclusion Master.
 
+    We define A as the (N, K) matrix of inputs to be excluded, where <N> is the number of data samples and <K> is the
+    number of excluded features, so that A[i, j] represents the i-th value of the j-th excluded feature in the dataset.
+    We then try to limit the casual relationship between the each excluded feature and the output by imposing the
+    constraints "abs(w) <= theta$ with:
+        - <w> being a K-sized vector so that "A @ w = z" holds (simple linear regression);
+        - <theta> being a K-sized vector of threshold values.
+
+    Since the linear system "A @ w = z" has no solution due to the fact that usually N > M, we need to minimize the
+    residual error using the least-squares method, which leads to the formulation:
+        (A.T @ A) @ w = A.T @ z
+    from which we can derive that:
+        w = ((A.T @ A)^-1 @ A.T) @ z
+    and since our constraints are:
+        abs(w) <= theta
+    we can rewrite them
+        -theta <= w <= theta
+    and subsequently as:
+        -theta <= ((A.T @ A)^-1 @ A.T) @ z <= theta
+    or else:
+        -(A.T @ A) @ theta <= A.T @ z <= (A.T @ A) @ theta
+    which is our final set of (2 *) M constraints.
+    """
+
+    def __init__(self, features, theta, backend='gurobi', alpha=1.0, beta=1.0, loss='mse', stats=True):
+        # noinspection PyUnusedLocal,PyPep8Naming
         def satisfied(x, y, p):
-            # Given the vector <theta> containing the thresholds of the M excluded features, and the NxM matrix <A>
-            # representing the weight of these excluded features for each of the N samples, the predictions <p> satisfy
-            # the constraint if all of the following M (dis)equivalences hold:
-            #   -(A.T @ A) @ theta <= A.T @ p <= (A.T @ A) @ theta
-            # which can be rewritten as:
-            #   abs(A.T @ p) <= (A.T @ A) @ theta
-            A = x[self.excluded_features].values
-            thresholds = np.dot(np.dot(A.T, A), self.theta)
-            return np.all(np.abs(np.dot(A.T, p)) <= thresholds)
+            A = x[:, features]
+            lhs = np.dot(A.T, p)
+            rhs = np.dot(A.T, A).dot(theta)
+            return np.all(np.abs(lhs) <= rhs)
 
         super(CausalExclusion, self).__init__(satisfied=satisfied, backend=backend, alpha=alpha, beta=beta,
                                               lb=0.0, ub=float('inf'), y_loss=loss, p_loss=loss, stats=stats)
 
+        self.features, self.theta = features, theta
+
+    # noinspection PyPep8Naming
     def build(self, x, y, p):
-        variables = super(CausalExclusion, self).build(x, y, p)
-        # The formula:
-        #   -(A.T @ A) @ theta <= A.T @ variables <= (A.T @ A) @ theta,
-        # with <variables> the array of variables and <A> the matrix of features weights, can be unpacked in:
-        #   -t <= r @ variables <= t, for i in {1, ..., M},
-        # with:
-        #   - <r> being the i-th row of the MxN matrix <A.T>;
-        #   - <t> being the i-th element of the M-sized vector <(A.T @ A) @ theta>, i.e., the i-th threshold;
-        # thus we can iterate over the M pairs of (vectors, threshold) and add the constraints accordingly
-        A = x[self.excluded_features].values
-        thresholds = np.dot(np.dot(A.T, A), self.theta)
-        # self.backend.add_constraints([self.backend.dot(r, variables) >= -t for r, t in zip(A.T, thresholds)])
-        # self.backend.add_constraints([self.backend.dot(r, variables) <= t for r, t in zip(A.T, thresholds)])
+        A = x[:, self.features]
+        var = super(CausalExclusion, self).build(x, y, p)
+        rhs = np.dot(A.T, A).dot(self.theta)
+        lhs = np.array([self.backend.dot(row, var) for row in A.T])
+        self.backend.add_constraints([left <= right for left, right in zip(lhs, rhs)])
+        self.backend.add_constraints([left >= -right for left, right in zip(lhs, rhs)])
+        return var
+
+
+class CausalExclusionCovariance(SingleTargetRegression):
+    """Causal Exclusion Master with Constraints on Covariance.
+
+    Here, we rely on covariance as a metric for constraint satisfaction. However, since the covariance is not defined
+    within a normalized interval, in order to set the <theta> values in an easier way we use a "percentage covariance",
+    which is scaled on the covariance between the excluded features vector and the original targets (same as in the
+    percentage DIDI used in fairness tasks).
+
+    The set of constraints, thus, will be:
+        abs(cov(A_i, z) / cov(A_i, y)) <= theta, for each column A_i in A
+    where:
+        - A_i is a vector containing the data of the i-th excluded feature
+        - cov(a, b) is computed as (a - a.mean()) @ (b - b.mean())
+    """
+
+    def __init__(self, features, theta, backend='gurobi', alpha=1.0, beta=1.0, loss='mse', stats=True):
+        self.features, self.theta = list(features), np.array(theta)
+
+        # noinspection PyUnusedLocal
+        def satisfied(x, y, p):
+            percentage_covariances = [np.cov(f, p) / np.cov(f, y) for f in x.T[self.features]]
+            return np.all(np.abs(percentage_covariances) <= theta)
+
+        super(CausalExclusionCovariance, self).__init__(satisfied=satisfied, backend=backend, alpha=alpha, beta=beta,
+                                                        lb=0.0, ub=float('inf'), y_loss=loss, p_loss=loss, stats=stats)
+
+    def build(self, x, y, p):
+        # retrieve variables from super class
+        variables = super(CausalExclusionCovariance, self).build(x, y, p)
+        # add auxiliary variable for the variable mean to speedup the constraints creation
+        v_mean = self.backend.add_continuous_variable(lb=-float('inf'), ub=float('inf'))
+        self.backend.add_constraint(len(variables) * v_mean == self.backend.sum(variables))
+        # compute variances of model variables and original targets
+        variance_v, variance_y = variables - v_mean, y - y.mean()
+        for f, t in zip(x.T[self.features], self.theta):
+            # compute variance of features vector and compute features/targets covariance
+            variance_f = f - f.mean()
+            covariance_yv = np.dot(variance_f, variance_y)
+            # add auxiliary variable for features/variables covariance to speedup the constraints creation
+            covariance_fv = self.backend.add_continuous_variable(lb=-float('inf'), ub=float('inf'))
+            self.backend.add_constraint(covariance_fv == self.backend.dot(variance_f, variance_v))
+            # add constraints on percentage covariance
+            covariance_pct = covariance_fv / covariance_yv
+            self.backend.add_constraints([covariance_pct <= t, covariance_pct >= -t])
+        # return variables
         return variables
 
 
 class PearsonCorrelation(Metric):
-    def __init__(self, feature, name=None):
-        super(PearsonCorrelation, self).__init__(name=f'pearson_{feature}' if name is None else name)
+    def __init__(self, feature, name):
+        super(PearsonCorrelation, self).__init__(name=name)
         self.feature = feature
 
     def __call__(self, x, y, p):
-        return pearsonr(x[self.feature], p)[0]
+        return pearsonr(x[:, self.feature], p)[0]
+
+
+class ZeroWeightCorrelation(Metric):
+    def __init__(self, features, name):
+        super(ZeroWeightCorrelation, self).__init__(name=name)
+        self.features = features
+
+    # noinspection PyPep8Naming
+    def __call__(self, x, y, p):
+        A = x[:, self.features]
+        w, _, _, _ = np.linalg.lstsq(A, p, rcond=None)
+        return np.abs(w).sum()
 
 
 def split_by_field(data, field):
