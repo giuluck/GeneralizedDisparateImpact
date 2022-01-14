@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import seaborn as sns
 from moving_targets import MACS
@@ -5,10 +6,10 @@ from moving_targets.learners import LinearRegression
 from moving_targets.masters.backends import GurobiBackend
 from moving_targets.metrics import R2, MSE
 
-from util import *
+from util import EffectCancellation, ZeroWeightCorrelation
 
-FEATURES = ['p1', 'p2']
-THETA = 0
+features = ['p1', 'p2', 'p3']
+theta = 0.2 * np.ones_like(features, dtype='int')
 
 if __name__ == '__main__':
     # config
@@ -18,20 +19,17 @@ if __name__ == '__main__':
 
     # get data
     df = pd.read_csv('data/cmapps.csv')
-    x, y = df.drop(columns=['src', 'machine', 'cycle', 'p3', 'rul']), df['rul']
-    features = x.columns.get_indexer(FEATURES)
-    theta = THETA * np.ones_like(features)
+    x, y = df.drop(columns=['src', 'machine', 'cycle', 'rul']), df['rul'].values
 
     # build model
-    metrics = [PearsonCorrelation(feature=i, name=f'pearson_{f}') for i, f in zip(features, FEATURES)]
     model = MACS(
         learner=LinearRegression(),
-        master=CausalExclusionCovariance(backend=GurobiBackend(time_limit=30), features=features, theta=theta),
-        metrics=[R2(), MSE(), ZeroWeightCorrelation(features=features, name='constraint'), *metrics],
+        master=EffectCancellation(backend=GurobiBackend(time_limit=30), features=features, theta=theta),
+        metrics=[R2(), MSE(), ZeroWeightCorrelation(features=features)],
         init_step='pretraining',
         stats=True
     )
 
     # fit and examine
-    history = model.fit(iterations=5, x=x.values, y=y.values)
+    history = model.fit(iterations=15, x=x, y=y)
     history.plot(figsize=(16, 9), orient_rows=True)
