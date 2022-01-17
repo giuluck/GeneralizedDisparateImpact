@@ -1,6 +1,6 @@
 import numpy as np
 from moving_targets.masters import SingleTargetRegression
-from moving_targets.metrics import Metric
+from moving_targets.metrics import CausalIndependence
 
 
 class EffectCancellation(SingleTargetRegression):
@@ -27,38 +27,28 @@ class EffectCancellation(SingleTargetRegression):
     which is our final set of (2 *) M constraints.
     """
 
-    def __init__(self, features, theta, backend='gurobi', alpha=1.0, beta=1.0, loss='mse', stats=True):
-        # noinspection PyUnusedLocal,PyPep8Naming
-        def satisfied(x, y, p):
-            A = x[features].values
-            lhs = np.dot(A.T, p)
-            rhs = np.dot(A.T, A).dot(theta)
-            return np.all(np.abs(lhs) <= rhs)
-
-        super(EffectCancellation, self).__init__(satisfied=satisfied, backend=backend, alpha=alpha, beta=beta,
-                                                 lb=0.0, ub=float('inf'), y_loss=loss, p_loss=loss, stats=stats)
-
-        self.features, self.theta = features, theta
+    def __init__(self, features, theta, backend='gurobi', alpha=1.0, loss='mse', lb=0.0, ub=float('inf'), stats=True):
+        self.theta = theta
+        self.features = features
+        self.metric = CausalIndependence(features=self.features, aggregation=None)
+        super(EffectCancellation, self).__init__(
+            satisfied=lambda x, y, p: np.all([w <= t for w, t in zip(self.metric(x, y, p).values(), self.theta)]),
+            backend=backend, alpha=alpha, beta=None, lb=lb, ub=ub, y_loss=loss, p_loss=loss, stats=stats
+        )
 
     # noinspection PyPep8Naming
     def build(self, x, y, p):
         A = x[self.features].values
-        var = super(EffectCancellation, self).build(x, y, p)
-        rhs = np.dot(A.T, A).dot(self.theta)
-        lhs = np.array([self.backend.dot(row, var) for row in A.T])
-        self.backend.add_constraints([left <= right for left, right in zip(lhs, rhs)])
-        self.backend.add_constraints([left >= -right for left, right in zip(lhs, rhs)])
-        return var
-
-
-class ZeroWeightCorrelation(Metric):
-    def __init__(self, features, name='constraint'):
-        super(ZeroWeightCorrelation, self).__init__(name=name)
-        self.features = features
-
-    def __call__(self, x, y, p):
-        w, _, _, _ = np.linalg.lstsq(x[self.features].values, p, rcond=None)
-        return np.abs(w).sum()
+        variables = super(EffectCancellation, self).build(x, y, p)
+        # add auxiliary variables for the regressor weights and impose constraints representing the regression task
+        weights = self.backend.add_continuous_variables(A.shape[1], name='w')
+        linear_regression_lhs = self.backend.dot(A.T @ A, weights)
+        linear_regression_rhs = self.backend.dot(A.T, variables)
+        self.backend.add_constraints([lrl == lrr for lrl, lrr in zip(linear_regression_lhs, linear_regression_rhs)])
+        # add model constraints on the regressor weights
+        self.backend.add_constraints([w <= t for w, t in zip(weights, self.theta)])
+        self.backend.add_constraints([w >= -t for w, t in zip(weights, self.theta)])
+        return variables
 
 
 def split_by_field(data, field):
