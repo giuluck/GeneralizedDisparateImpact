@@ -1,9 +1,7 @@
-import numpy as np
-from moving_targets.masters import SingleTargetRegression
-from moving_targets.metrics import CausalIndependence
+from moving_targets.masters import RegressionMaster
 
 
-class EffectCancellation(SingleTargetRegression):
+class EffectCancellation(RegressionMaster):
     """We define A as the (N, K) matrix of inputs related to the features to be excluded, where <N> is the number of
     data samples and <K> is the number of excluded features, so that A[i, j] represents the i-th value of the j-th
     excluded feature in the dataset. We then try to limit the casual relationship between the each excluded feature and
@@ -30,16 +28,19 @@ class EffectCancellation(SingleTargetRegression):
     def __init__(self, features, theta, backend='gurobi', alpha=1.0, loss='mse', lb=0.0, ub=float('inf'), stats=True):
         self.theta = theta
         self.features = features
-        self.metric = CausalIndependence(features=self.features, aggregation=None)
-        super(EffectCancellation, self).__init__(
-            satisfied=lambda x, y, p: np.all([w <= t for w, t in zip(self.metric(x, y, p).values(), self.theta)]),
-            backend=backend, alpha=alpha, beta=None, lb=lb, ub=ub, y_loss=loss, p_loss=loss, stats=stats
-        )
+        super(EffectCancellation, self).__init__(backend=backend,
+                                                 y_loss=loss,
+                                                 p_loss=loss,
+                                                 alpha=alpha,
+                                                 beta=None,
+                                                 lb=lb,
+                                                 ub=ub,
+                                                 stats=stats)
 
     # noinspection PyPep8Naming
-    def build(self, x, y, p):
+    def build(self, x, y):
         A = x[self.features].values
-        variables = super(EffectCancellation, self).build(x, y, p)
+        variables = super(EffectCancellation, self).build(x, y)
         # add auxiliary variables for the regressor weights and impose constraints representing the regression task
         weights = self.backend.add_continuous_variables(A.shape[1], name='w')
         linear_regression_lhs = self.backend.dot(A.T @ A, weights)
