@@ -5,7 +5,7 @@ import pandas as pd
 import seaborn as sns
 from moving_targets import MACS
 from moving_targets.learners import LinearRegression, LogisticRegression
-from moving_targets.masters.backends import CplexBackend
+from moving_targets.masters.backends import GurobiBackend
 from moving_targets.metrics import Accuracy, CrossEntropy, DIDI, R2, MSE
 
 from fairness.util import DidiMaster, LrMaster, LrWeight
@@ -16,7 +16,7 @@ theta = 0.2
 loss = 'mse'
 alpha = 'harmonic'
 iterations = 5
-backend = CplexBackend(time_limit=30)
+backend = GurobiBackend(time_limit=30)
 m_stats = True
 t_stats = False
 verbose = True

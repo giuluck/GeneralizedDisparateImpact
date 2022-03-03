@@ -1,4 +1,6 @@
+docplex
 gurobipy
 moving-targets
 networkx
 seaborn
+tensorflow

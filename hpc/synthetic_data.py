@@ -3,43 +3,37 @@ import numpy as np
 from data_generator import DataGenerator
 
 
-def f_y(data, parents):
-    """Generative function for variable y"""
-    assert all(x in data.keys() for x in parents), "Missing parents!"
-    q_hat = data['q_hat']
-    y = 3 + np.exp(q_hat)
-    return y
+def generator(fy, fq):
+    # fy: f(q_hat) -> y
+    # fq: f(p, q_hat) -> q
 
+    def _fy(data, par):
+        assert all(x in data.keys() for x in par), "Missing parents!"
+        return fy(data['q_hat'])
 
-def f_q(data, parents):
-    """Generative function for variable q"""
-    assert all(x in data.keys() for x in parents), "Missing parents!"
-    p, q_hat = data['p'], data['q_hat']
-    q = q_hat + 2 * p
-    return q
+    def _fq(data, par):
+        assert all(x in data.keys() for x in par), "Missing parents!"
+        return fq(data['p'], data['q_hat'])
 
-
-if __name__ == '__main__':
     parents = {
         'p': (),
         'q_hat': (),
         'q': ('p', 'q_hat'),
-        'y': ('q_hat',)}
-
-    priors = {
-        'p': {
-            'name': 'uniform',
-            'args': [2, 3]},
-        'q_hat': {
-            'name': 'gauss',
-            'args': [0, 1]
-        }
+        'y': ('q_hat',)
     }
 
-    gen_fn = {'q': f_q,
-              'y': f_y}
+    priors = {
+        'p': {'name': 'uniform', 'args': [2, 3]},
+        'q_hat': {'name': 'gauss', 'args': [0, 1]}
+    }
 
-    generator = DataGenerator(parents=parents, generative_fn=gen_fn, prior_distr=priors)
-    df = generator.generate()
+    gen_fn = {'q': _fq, 'y': _fy}
+
+    return DataGenerator(parents=parents, generative_fn=gen_fn, prior_distr=priors)
+
+
+if __name__ == '__main__':
+    g = generator(fy=lambda qh: 3 + np.exp(qh), fq=lambda p, qh: qh + 2 * p)
+    df = g.generate()
     print(df)
-    generator.view_graph()
+    # g.view_graph()
