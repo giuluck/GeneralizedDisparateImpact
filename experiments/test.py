@@ -5,8 +5,10 @@ from moving_targets.learners import LinearRegression
 from moving_targets.masters.backends import GurobiBackend
 from moving_targets.metrics import R2, MSE
 
-from hpc.synthetic_data import generator
-from hpc.util import EffectCancellation, Pearson
+from data.synthetic import generator
+from experiments.util import Pearson, config
+from src.constraints import Smaller
+from src.master import ShapeConstrainedMaster
 
 
 class CustomLearner(LinearRegression):
@@ -21,13 +23,10 @@ class CustomLearner(LinearRegression):
 
 
 if __name__ == '__main__':
-    # config
-    np.random.seed(0)
-    sns.set_style('whitegrid')
-    sns.set_context('notebook')
+    config()
 
     # build dataset
-    a, b, c, d, e = [2, 5, 1, 5, 1]  # np.random.uniform(size=(5,))
+    a, b, c, d, e = [2, 5, 1, 5, 1]
     w = [e - c * d / b, -a * d / b, d / b]
     df = generator(fq=lambda p, qh: a * p + b * qh + c, fy=lambda qh: d * qh + e).generate()
     print('Covariance(p, q_hat):', np.cov(df['p'], df['q_hat'])[0, 1])
@@ -37,10 +36,15 @@ if __name__ == '__main__':
     model = MACS(
         init_step='pretraining',
         learner=CustomLearner(expected_weights=w),
-        master=EffectCancellation(theta=1e-9, features=['p'], backend=GurobiBackend(time_limit=10), stats=False),
+        master=ShapeConstrainedMaster(
+            constraints={'p': [None, Smaller(1e-9)]},
+            backend=GurobiBackend(time_limit=10),
+            binary=False,
+            stats=False
+        ),
         metrics=[MSE(), R2(), Pearson(feature='p')]
     )
 
     # fit and examine
-    # history = model.fit(iterations=10, x=df[['p', 'q']], y=df['y'].values, verbose=True)
-    # history.plot(figsize=(16, 9), orient_rows=True)
+    history = model.fit(iterations=10, x=df[['p', 'q']], y=df['y'].values, verbose=True)
+    history.plot(figsize=(16, 9), orient_rows=True)

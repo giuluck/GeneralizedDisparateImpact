@@ -8,53 +8,54 @@ from moving_targets.learners import LinearRegression
 from moving_targets.masters.backends import GurobiBackend
 from moving_targets.metrics import R2, MSE
 
-from hpc.synthetic_data import generator
-from hpc.util import EffectCancellation, CausalIndependence, Pearson
+from data.synthetic import generator
+from experiments.util import Pearson, config
+from src.constraints import Smaller
+from src.master import ShapeConstrainedMaster
+from src.metrics import SoftShape
 
-dataset = 'synthetic'
-iterations = 20
+dataset = 'cmapps'
+iterations = 10
 theta = 1e-3
+degree = 1
+shape = True
 pearson = True
-time_limit = 10
+backend = GurobiBackend(time_limit=10)
 m_stats = False
 t_stats = False
 
 if __name__ == '__main__':
-    # config
-    np.random.seed(0)
-    sns.set_style('whitegrid')
-    sns.set_context('notebook')
+    config()
 
+    # handle data
     if dataset == 'cmapps':
         with importlib.resources.path('data', 'cmapps.csv') as filepath:
             df = pd.read_csv(filepath)
         x, y = df.drop(columns=['src', 'machine', 'cycle', 'rul']), df['rul'].values
         features = ['p1', 'p2', 'p3']
-        metrics = [CausalIndependence(f, name=f'{f}_weight') for f in features]
     elif dataset == 'synthetic':
         df = generator(fy=lambda qh: 3 + np.exp(qh), fq=lambda p, qh: qh + 2 * p).generate()
         x, y = df[['p', 'q']], df['y'].values
         features = ['p']
-        metrics = [CausalIndependence('p', name='p_weights')]
     else:
         raise AssertionError(f"Unknown dataset '{dataset}'")
 
     # build model
     learner = LinearRegression()
-    master = EffectCancellation(
-        theta=theta,
-        features=features,
-        backend=GurobiBackend(time_limit=time_limit),
-        stats=m_stats,
-        ub=float('inf'),
-        lb=-float('inf'),
-        loss='mse'
-    )
+    master = ShapeConstrainedMaster(constraints={f: {i + 1: Smaller(theta) for i in range(degree)} for f in features},
+                                    backend=backend,
+                                    stats=m_stats)
+    metrics = [R2(), MSE()]
+    if shape:
+        postprocessing = lambda w: {f'w{i + 1}': v for i, v in enumerate(w[1:])}
+        metrics += [SoftShape(feature=f, postprocessing=postprocessing, name=f) for f in features]
+    if pearson:
+        metrics += [Pearson(f, name=f'{f}_pearson') for f in features]
     model = MACS(
         init_step='pretraining',
         learner=learner,
         master=master,
-        metrics=[R2(), MSE(), *metrics] + ([Pearson(f, name=f'{f}_pearson') for f in features] if pearson else []),
+        metrics=metrics,
         stats=t_stats
     )
 
