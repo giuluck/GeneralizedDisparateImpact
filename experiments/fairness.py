@@ -11,14 +11,14 @@ from src.constraints import Smaller
 from src.master import ShapeConstrainedMaster
 from src.metrics import SoftShape
 
-classification = True
+classification = False
 theta = 0.2
 iterations = 5
 backend = GurobiBackend(time_limit=30)
 m_stats = False
 t_stats = False
 verbose = True
-plot = dict(orient_rows=True)
+plot = dict(features=None, excluded=['adjusted/*'])
 
 if __name__ == '__main__':
     config()

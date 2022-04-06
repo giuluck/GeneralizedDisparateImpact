@@ -11,30 +11,37 @@ from scipy.stats import pearsonr
 
 
 class ICECallback(Callback):
-    @staticmethod
-    def plot_ice(x, model, feature, space):
-        plt.figure(figsize=(16, 9), tight_layout=True)
-        df = pd.concat([x] * len(space))
-        df[feature] = space.repeat(len(x))
-        df['y'] = model.predict(df)
-        df = df.reset_index()
-        for i, group in df.groupby('index'):
-            sns.lineplot(data=group, x=feature, y='y', color='black', alpha=0.4)
-        sns.lineplot(data=df, x=feature, y='y', ci=None, color='red', linewidth=3, label='PD')
-        plt.title(f'ICE Plot for {feature}')
-        plt.show()
-
     def __init__(self, feature, space):
         super(ICECallback, self).__init__()
         self.feature = feature
         self.space = space
-        self.x = None
+        self.data = None
+        self.columns = None
 
     def on_process_start(self, macs, x, y, val_data):
-        self.x = x
+        self.data = pd.concat([x] * len(self.space))
+        self.data[self.feature] = self.space.repeat(len(x))
+        self.columns = self.data.columns
 
-    def on_process_end(self, macs, val_data):
-        self.plot_ice(x=self.x, model=macs, feature=self.feature, space=self.space)
+    def on_training_end(self, macs, x, y, p, val_data):
+        self.data[f'p{macs.iteration}'] = macs.predict(self.data[self.columns])
+
+    def on_process_end(self, macs, x, y, val_data):
+        plt.figure(figsize=(16, 9), tight_layout=True)
+        iterations = len(self.data.columns) - len(self.columns)
+        num_columns = max(np.sqrt(16 / 9 * iterations).round().astype(int), 1)
+        num_rows = np.ceil(iterations / num_columns).astype(int)
+        self.data = self.data.reset_index()
+        ax = None
+        for idx in range(iterations):
+            ax = plt.subplot(num_rows, num_columns, idx + 1, sharex=ax, sharey=ax)
+            for i, group in self.data.groupby('index'):
+                sns.lineplot(data=group, x=self.feature, y=f'p{idx}', color='black', alpha=0.4)
+            sns.lineplot(data=self.data, x=self.feature, y=f'p{idx}', ci=None, color='red', linewidth=3, label='PD')
+            ax.set(xlabel='', ylabel='')
+            ax.set_title(str(idx))
+        plt.suptitle(f'ICE Plots for {self.feature}')
+        plt.show()
 
 
 class Pearson(Metric):

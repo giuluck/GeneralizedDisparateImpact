@@ -2,7 +2,6 @@ import importlib.resources
 
 import numpy as np
 import pandas as pd
-import seaborn as sns
 from moving_targets import MACS
 from moving_targets.learners import LinearRegression
 from moving_targets.masters.backends import GurobiBackend
@@ -15,7 +14,7 @@ from src.master import ShapeConstrainedMaster
 from src.metrics import SoftShape
 
 dataset = 'cmapps'
-iterations = 10
+iterations = 5
 theta = 1e-3
 degree = 1
 shape = True
@@ -23,6 +22,7 @@ pearson = True
 backend = GurobiBackend(time_limit=10)
 m_stats = False
 t_stats = False
+plot = dict(features=None, excluded=['adjusted/*'])
 
 if __name__ == '__main__':
     config()
@@ -61,4 +61,7 @@ if __name__ == '__main__':
 
     # fit and examine
     history = model.fit(iterations=iterations, x=x, y=y)
-    history.plot(figsize=(16, 9), orient_rows=True)
+    if plot is True:
+        history.plot()
+    elif isinstance(plot, dict):
+        history.plot(**plot)

@@ -1,5 +1,4 @@
 import numpy as np
-import seaborn as sns
 from moving_targets import MACS
 from moving_targets.learners import LinearRegression
 from moving_targets.masters.backends import GurobiBackend
@@ -47,4 +46,4 @@ if __name__ == '__main__':
 
     # fit and examine
     history = model.fit(iterations=10, x=df[['p', 'q']], y=df['y'].values, verbose=True)
-    history.plot(figsize=(16, 9), orient_rows=True)
+    history.plot(excluded=['adjusted/*'])
