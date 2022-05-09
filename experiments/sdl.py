@@ -1,12 +1,12 @@
 import numpy as np
 from moving_targets import MACS
-from moving_targets.learners import LinearRegression, MultiLayerPerceptron
+from moving_targets.learners import LinearRegression, TensorflowMLP
 from moving_targets.masters.backends import GurobiBackend
 
 from data.sdl import load_data
 from experiments.util import config, ICECallback
 from src.constraints import *
-from src.master import ShapeConstrainedMaster
+from src.master import ShapeConstrainedMaster, Shape
 from src.metrics import SoftShape
 
 # NOTE:
@@ -22,13 +22,13 @@ iterations = 5
 degree = 2
 thr = 1e-9
 learner = 'mlp'
-constraints = {
-    # 'x1': [None, Lower(-2.0), Greater(1.0)],   # convex with inflection point on the right (-b / 2a > 0 -> b < 0)
-    'x1': [None, Greater(2.0), Lower(-1.0)],   # concave with inflection point on the right (-b / 2a > 0 -> b > 0)
-    # 'x1': [None, Greater(0.5), Smaller(thr)],  # increasing
-    # 'x1': [None, Lower(-0.5), Smaller(thr)],   # decreasing
-    # 'x1': [None, Smaller(0.1), Smaller(thr)],  # negligible
-}
+shapes = [
+    Shape('x1', constraints=[None, Lower(-2.0), Greater(1.0)], kernel=2),  # convex (inflection point on the right)
+    # Shape('x1', constraints=[None, Greater(1.0), Lower(-1.0)], kernel=2),  # concave (inflection point on the right)
+    # Shape('x1', constraints=[None, Greater(0.5), Smaller(thr)], kernel=2),  # increasing
+    # Shape('x1', constraints=[None, Lower(-0.5), Smaller(thr)], kernel=2),  # decreasing
+    # Shape('x1', constraints=[None, Smaller(0.1), Smaller(thr)], kernel=2),  # negligible
+]
 callbacks = np.arange(features) + 1
 backend = GurobiBackend(time_limit=30)
 m_stats = False
@@ -43,7 +43,7 @@ if __name__ == '__main__':
     if learner == 'lr':
         learner = LinearRegression(polynomial=degree).fit(x, y)
     elif learner == 'mlp':
-        learner = MultiLayerPerceptron(loss='mse', hidden_units=[64, 64], epochs=1000, verbose=False)
+        learner = TensorflowMLP(loss='mse', hidden_units=[64, 64], epochs=1000, verbose=False)
     else:
         raise AssertionError(f"Unknown learner '{learner}'")
 
@@ -51,7 +51,7 @@ if __name__ == '__main__':
     model = MACS(
         init_step='pretraining',
         learner=learner,
-        master=ShapeConstrainedMaster(constraints=constraints, kernels=degree, backend=backend, stats=m_stats),
+        master=ShapeConstrainedMaster(shapes=shapes, backend=backend, stats=m_stats),
         metrics=[SoftShape(feature=f'x{i}', kernels=degree, name=f'x{i}') for i in np.arange(features) + 1]
     )
 

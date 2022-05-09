@@ -8,7 +8,7 @@ from moving_targets.metrics import Accuracy, CrossEntropy, DIDI, R2, MSE
 
 from experiments.util import config
 from src.constraints import Smaller
-from src.master import ShapeConstrainedMaster
+from src.master import ShapeConstrainedMaster, Shape
 from src.metrics import SoftShape
 
 classification = False
@@ -47,10 +47,8 @@ if __name__ == '__main__':
             violations[c] = abs(theta * metric(x, y, y))
 
     # handle master (constraint each protected feature to have first-order degree weight lower than the violation)
-    master = ShapeConstrainedMaster(constraints={p: [None, Smaller(v)] for p, v in violations.items()},
-                                    binary=classification,
-                                    backend=backend,
-                                    stats=m_stats)
+    shapes = [Shape(p, constraints=[None, Smaller(v)], kernel=1) for p, v in violations.items()]
+    master = ShapeConstrainedMaster(shapes=shapes, binary=classification, backend=backend, stats=m_stats)
 
     # handle macs model
     model = MACS(init_step='pretraining', learner=learner, master=master, metrics=metrics, stats=t_stats)

@@ -10,7 +10,7 @@ from moving_targets.metrics import R2, MSE
 from data.synthetic import generator
 from experiments.util import Pearson, config
 from src.constraints import Smaller
-from src.master import ShapeConstrainedMaster
+from src.master import ShapeConstrainedMaster, Shape
 from src.metrics import SoftShape
 
 dataset = 'cmapps'
@@ -42,9 +42,8 @@ if __name__ == '__main__':
 
     # build model
     learner = LinearRegression()
-    master = ShapeConstrainedMaster(constraints={f: {i + 1: Smaller(theta) for i in range(degree)} for f in features},
-                                    backend=backend,
-                                    stats=m_stats)
+    shapes = [Shape(f, constraints={i + 1: Smaller(theta) for i in range(degree)}, kernel=1) for f in features]
+    master = ShapeConstrainedMaster(shapes=shapes, backend=backend, stats=m_stats)
     metrics = [R2(), MSE()]
     if shape:
         postprocessing = lambda w: {f'w{i + 1}': v for i, v in enumerate(w[1:])}
