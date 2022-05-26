@@ -1,6 +1,7 @@
-docplex
+fastparquet
 gurobipy
 moving-targets
 networkx
+pyarrow
 seaborn
 tensorflow

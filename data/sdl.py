@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 
-def load_data(samples=200, features=5):
+def load_data(samples=200, features=5, noise=0.1):
     """Creates a synthetic dataset as described in Section 5.1 of "Sensitivity Direction Learning with Neural Networks
     Using Domain Knowledge as Soft Shape Constraints":
 
@@ -14,6 +14,7 @@ def load_data(samples=200, features=5):
     each of five features (x1 ~ x5) and the output y. Therefore it can be said that if a model is learned without shape
     constraints, there is very little possibility that the trained model has convexity relationships.
     """
-    u = np.linspace(0, 1, num=samples, endpoint=False)
     rng = np.random.default_rng(0)
-    return pd.DataFrame().from_dict({'u': u, **{f'x{i + 1}': u + rng.normal(0, 0.1) for i in range(features)}}), u
+    inp = np.linspace(0, 1, num=samples, endpoint=False)
+    feat = {f'x{i + 1}': inp + rng.normal(0, noise, len(inp)) for i in range(features)}
+    return pd.DataFrame().from_dict({'u': inp, **feat}), inp
