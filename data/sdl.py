@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 
-def load_data(samples=200, features=5, noise=0.1):
+def load_data(samples=200, features=5, noise=0.1, augmentation=None):
     """Creates a synthetic dataset as described in Section 5.1 of "Sensitivity Direction Learning with Neural Networks
     Using Domain Knowledge as Soft Shape Constraints":
 
@@ -17,4 +17,10 @@ def load_data(samples=200, features=5, noise=0.1):
     rng = np.random.default_rng(0)
     inp = np.linspace(0, 1, num=samples, endpoint=False)
     feat = {f'x{i + 1}': inp + rng.normal(0, noise, len(inp)) for i in range(features)}
-    return pd.DataFrame().from_dict({'u': inp, **feat}), inp
+    x, y = pd.DataFrame().from_dict({'u': inp, **feat}), inp
+    if augmentation is not None:
+        num = augmentation if isinstance(augmentation, int) else int(augmentation * samples)
+        aug = rng.uniform(0, 1, size=(num, features + 1))
+        x = x.append(pd.DataFrame(aug, columns=x.columns), ignore_index=True)
+        y = np.concatenate((y, [np.nan] * num))
+    return x, y

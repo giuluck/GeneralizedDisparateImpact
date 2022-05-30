@@ -96,7 +96,7 @@ class ShapeConstrainedMaster(Master):
         self.vtype = vtype
         """The model variables vtypes."""
 
-        super().__init__(backend=backend, loss=loss, alpha=alpha, stats=stats)
+        super().__init__(backend=backend, loss=loss, alpha=alpha, stats=stats, mask=np.nan)
 
     def _build(self, x, y, p, v):
         raise NotImplementedError("Please implement abstract method _build")

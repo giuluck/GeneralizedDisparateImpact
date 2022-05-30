@@ -146,16 +146,8 @@ def compute_monotonicities(samples, references, directions, eps: float = 1e-6):
     return np.int32(monotonicities) if monotonicities.ndim == 0 else monotonicities
 
 
-def augment_data(x, y, num=5.0, seed=0):
-    low = x.min().values
-    high = x.max().values
-    num = num if isinstance(num, int) else int(num * len(x))
-    augmented = np.random.default_rng(seed=seed).uniform(low, high, size=(num, x.shape[1]))
-    return x.append(pd.DataFrame(augmented, columns=x.columns), ignore_index=True), np.concatenate((y, [np.nan] * num))
-
-
 def run(x, y, features, master, learner, metrics=(), callbacks=(), iterations=5, verbose=True, plot=True, seed=0):
-    random.seed(0)
+    random.seed(seed)
     np.random.seed(seed)
     tf.random.set_seed(seed)
     sns.set_style('whitegrid')
@@ -170,7 +162,7 @@ def run(x, y, features, master, learner, metrics=(), callbacks=(), iterations=5,
             cbs += [ICECallback(feature=f, samples=50, steps=20) for f in features]
         else:
             raise AssertionError(f"Unknown callback alias '{c}'")
-    model = MACS(init_step='pretraining', learner=learner, master=master, metrics=metrics)
+    model = MACS(init_step='pretraining', learner=learner, master=master, metrics=metrics, mask=np.nan)
     history = model.fit(x=x, y=y, iterations=iterations, callbacks=cbs, verbose=verbose)
     if isinstance(plot, dict):
         history.plot(**plot)
