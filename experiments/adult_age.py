@@ -14,7 +14,7 @@ from src.metrics import SoftShape
 
 theta = 0.2
 bins = [2, 3, 5, 10, 20]
-kernels = [1, 2, 3, 5, 10]
+kernels = [1, 2, 3, 5]
 iterations = 5
 learner = 'lr'
 master = 'covariance'
