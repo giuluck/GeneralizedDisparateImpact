@@ -17,17 +17,21 @@ from src.master import DefaultMaster, Shape, ExplicitZerosMaster, CovarianceBase
 from src.metrics import SoftShape
 
 theta = 0.0
-kernels = [1, 2, 3, 5, 10, 20, 50, 100]
-iterations = 5
+kernels = [10]
+iterations = 10
 units = [8, 8]
 master = 'covariance'
-callbacks = False
+reg1 = 0.2
+reg2 = None
+callbacks = True
 preprocess = True
 weights = True
 backend = GurobiBackend(time_limit=30)
 verbose = 1
-plot = dict(orient_rows=True, features=[['predictions/mse', 'predictions/r2', 'predictions/monotonicity'],
-                                        ['adjusted/shape_w0', 'adjusted/shape_w1', 'adjusted/shape_w+']])
+# features = [['predictions/mse', 'predictions/r2', 'predictions/monotonicity'],
+#             ['adjusted/shape_w0', 'adjusted/shape_w1', 'adjusted/shape_w+']]
+# plot = dict(orient_rows=True, features=features)
+plot = dict(orient_rows=True)
 
 
 # noinspection PyShadowingNames
@@ -62,7 +66,7 @@ if __name__ == '__main__':
         if preprocess:
             x, y = Scaler('std').fit_transform(x), Scaler('norm').fit_transform(y)
     metrics = [MSE(), R2(), MonotonicViolation(lambda v: compute_monotonicities(v, v, directions=[-1]))]
-    cst = Lower(theta)
+    cst = Lower(0) if theta == '<' else (Null() if theta == 0.0 else Smaller(theta))
 
     # test different polynomial kernels
     print('----------------------------------------------------------------------------')
@@ -74,11 +78,13 @@ if __name__ == '__main__':
         # build master
         if master == 'default':
             shapes = [Shape('price', constraints=[None, cst, *[Null() for _ in range(1, k)]], kernel=k)]
-            mst = DefaultMaster(shapes=shapes, backend=backend, binary=False)
+            mst = DefaultMaster(shapes=shapes, backend=backend, reg1=reg1, reg2=reg2, binary=False)
         elif master == 'zeros':
-            mst = ExplicitZerosMaster(feature='price', constraint=cst, degree=k, backend=backend, binary=False)
+            mst = ExplicitZerosMaster(feature='price', constraint=cst, degree=k, backend=backend,
+                                      reg1=reg1, reg2=reg2, binary=False)
         elif master == 'covariance':
-            mst = CovarianceBasedMaster(feature='price', constraint=cst, degree=k, backend=backend, binary=False)
+            mst = CovarianceBasedMaster(feature='price', constraint=cst, degree=k, backend=backend,
+                                        reg1=reg1, reg2=reg2, binary=False)
         else:
             raise AssertionError(f"Unknown master '{master}'")
 
