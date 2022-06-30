@@ -1,6 +1,7 @@
 from typing import Dict, Union, List, Callable, Optional
 
 import numpy as np
+from numpy.linalg import norm
 from moving_targets.masters import Master
 from moving_targets.masters.backends import Backend
 from moving_targets.masters.losses import Loss, HammingDistance, aliases
@@ -57,12 +58,13 @@ class ShapeConstrainedMaster(Master):
 
     def __init__(self,
                  backend: Union[str, Backend],
-                 binary: bool = False,
-                 loss: Union[str, Loss] = 'auto',
-                 alpha: Union[str, float, Optimizer] = 'harmonic',
-                 reg1: Optional[float] = None,
-                 reg2: Optional[float] = None,
-                 stats: Union[bool, List[str]] = False):
+                 binary: bool,
+                 loss: Union[str, Loss],
+                 alpha: Union[str, float, Optimizer],
+                 reg_1: Optional[float],
+                 reg_2: Optional[float],
+                 reg_inf: Optional[float],
+                 stats: Union[bool, List[str]]):
         """
         :param backend:
             The `Backend` instance encapsulating the optimization solver.
@@ -78,16 +80,22 @@ class ShapeConstrainedMaster(Master):
             Either a floating point for a constant alpha value, a string representing an `Optimizer` alias,  or an
             actual `Optimizer` instance which implements the strategy to dynamically change the alpha value.
 
-        :param reg1:
+        :param reg_1:
             The penalty threshold for norm-1 regularization.
 
-        :param reg2:
+        :param reg_2:
             The penalty threshold for norm-2 regularization.
+
+        :param reg_inf:
+            The penalty threshold for norm-inf regularization.
 
         :param stats:
             Either a boolean value indicating whether or not to log statistics, or a list of parameters in ['alpha',
             'nabla_term', 'squared_term', 'objective', 'elapsed_time'] whose statistics must be logged.
         """
+        assert reg_1 is None or reg_1 >= 0, "reg_1 is a regularization threshold so it should be non-negative"
+        assert reg_2 is None or reg_2 >= 0, "reg_2 is a regularization threshold so it should be non-negative"
+        assert reg_inf is None or reg_inf >= 0, "reg_inf is a regularization threshold so it should be non-negative"
 
         # handle binary vs continuous
         lb, ub, vtype = (0, 1, 'binary') if binary else (-float('inf'), float('inf'), 'continuous')
@@ -104,11 +112,16 @@ class ShapeConstrainedMaster(Master):
         self.vtype: str = vtype
         """The model variables vtypes."""
 
-        self.reg1: Optional[float] = reg1
+        self.reg_1: Optional[float] = reg_1
         """The penalty threshold for norm-1 regularization."""
 
-        self.reg2: Optional[float] = reg2
+        self.reg_2: Optional[float] = reg_2
         """The penalty threshold for norm-2 regularization."""
+
+        self.reg_inf: Optional[float] = reg_inf
+        """The penalty threshold for norm-inf regularization."""
+
+        self.w, self.vp = None, None
 
         super().__init__(backend=backend, loss=loss, alpha=alpha, stats=stats, mask=np.nan)
 
@@ -125,22 +138,38 @@ class ShapeConstrainedMaster(Master):
         else:
             return loss_class(binary=self.binary)
 
+    def on_backend_solved(self, x, y, p, z):
+        # print()
+        # w = np.array([wi if isinstance(wi, (int, float)) else self.backend.get_value(wi) for wi in self.w])
+        # for i, wi in enumerate(w):
+        #     print(f"w[{i}]: {wi}")
+        # print()
+        vp = self.backend.get_values(self.vp)
+        self.log(**{
+            'inspection/norm_1': norm(z - vp, 1),
+            'inspection/norm_2': norm(z - vp, 2),
+            'inspection/norm_inf': norm(z - vp, np.inf)
+        })
+        # print()
+        self.w, self.vp = None, None
+
     # noinspection PyPep8Naming
     def build(self, x, y, p):
         assert y.ndim == 1, f"Target vector must be one-dimensional, got shape {y.shape}"
         v = self.backend.add_variables(len(y), vtype=self.vtype, lb=self.lb, ub=self.ub, name='y')
-        # if no regularization is needed, we simply return the predictions of the surrogate linear regression model
-        # otherwise we build additional variables for the raw predictions (vp) and then impose the regularization
-        if self.reg1 is None and self.reg2 is None:
-            self._build(x, y, p, v)
-        else:
-            vp = self.backend.add_variables(len(y), vtype=self.vtype, lb=self.lb, ub=self.ub, name='yp')
-            self._build(x, y, p, vp)
-            if self.reg1 is not None:
-                # TODO: how to linearize sum(|v - vp|) <= reg1?
-                self.backend.add_constraint(self.backend.sum(self.backend.abs(v - vp)) <= self.reg1)
-            if self.reg2 is not None:
-                self.backend.add_constraint(self.backend.sum(self.backend.square(v - vp)) <= self.reg1)
+        # build the model and retrieve the surrogate predictions
+        w, vp = self._build(x, y, p, v)
+        if self.reg_1 is not None:
+            norm1 = self.backend.norm_1(v - vp)
+            self.backend.add_constraint(norm1 <= self.reg_1)
+        if self.reg_2 is not None:
+            norm2 = self.backend.norm_2(v - vp)
+            self.backend.add_constraint(norm2 <= self.reg_2)
+        if self.reg_inf is not None:
+            normI = self.backend.norm_inf(v - vp)
+            self.backend.add_constraint(normI <= self.reg_inf)
+        # these are used in the hook routine "on_backend_solved"
+        self.w, self.vp = w, vp
         return v
 
     def adjust_targets(self, x, y, p, sample_weight=None):
@@ -173,26 +202,32 @@ class DefaultMaster(ShapeConstrainedMaster):
                  binary: bool = False,
                  loss: Union[str, Loss] = 'auto',
                  alpha: Union[str, float, Optimizer] = 'harmonic',
-                 reg1: Optional[float] = None,
-                 reg2: Optional[float] = None,
+                 reg_1: Optional[float] = None,
+                 reg_2: Optional[float] = None,
+                 reg_inf: Optional[float] = None,
                  stats: Union[bool, List[str]] = False):
         self.shapes: List[Shape] = shapes
         """The list of desired shapes for input features."""
 
-        super().__init__(backend=backend, binary=binary, loss=loss, alpha=alpha, reg1=reg1, reg2=reg2, stats=stats)
+        super().__init__(backend=backend, binary=binary, loss=loss, alpha=alpha,
+                         reg_1=reg_1, reg_2=reg_2, reg_inf=reg_inf, stats=stats)
 
     # noinspection PyPep8Naming
     def _build(self, x, y, p, v):
-        for shape in self.shapes:
-            # build linear regression model: A.T @ A @ w = A.T @ v
-            A = shape.kernel(x[[shape.feature]])
-            w = self.backend.add_continuous_variables(A.shape[1])
-            left_hand_sides = np.atleast_1d(self.backend.dot(A.T @ A, w))
-            right_hand_sides = np.atleast_1d(self.backend.dot(A.T, v))
-            self.backend.add_constraints([lhs == rhs for lhs, rhs in zip(left_hand_sides, right_hand_sides)])
-            # constraint (transformed) features f with respective shapes s
-            for i, c in shape.constraints.items():
-                c.add(expression=w[i], backend=self.backend)
+        assert len(self.shapes) == 1, "Debugging with one feature only"
+        # for shape in self.shapes:
+        shape = self.shapes[0]
+        # build linear regression model: A.T @ A @ w = A.T @ v
+        A = shape.kernel(x[[shape.feature]])
+        w = self.backend.add_continuous_variables(A.shape[1])
+        left_hand_sides = np.atleast_1d(self.backend.dot(A.T @ A, w))
+        right_hand_sides = np.atleast_1d(self.backend.dot(A.T, v))
+        self.backend.add_constraints([lhs == rhs for lhs, rhs in zip(left_hand_sides, right_hand_sides)])
+        # constraint (transformed) features f with respective shapes s
+        for i, c in shape.constraints.items():
+            c.add(expression=w[i], backend=self.backend)
+        # return weights and surrogate model predictions
+        return w, self.backend.dot(A, w)
 
 
 class ExplicitZerosMaster(ShapeConstrainedMaster):
@@ -207,8 +242,9 @@ class ExplicitZerosMaster(ShapeConstrainedMaster):
                  degree: int = 1,
                  loss: Union[str, Loss] = 'auto',
                  alpha: Union[str, float, Optimizer] = 'harmonic',
-                 reg1: Optional[float] = None,
-                 reg2: Optional[float] = None,
+                 reg_1: Optional[float] = None,
+                 reg_2: Optional[float] = None,
+                 reg_inf: Optional[float] = None,
                  stats: Union[bool, List[str]] = False):
         # check data entry
         assert degree > 0, f"'degree' should be a positive integer, got {degree}"
@@ -222,7 +258,8 @@ class ExplicitZerosMaster(ShapeConstrainedMaster):
         self.degree: int = degree
         """The degree of the polynomial kernel."""
 
-        super().__init__(backend=backend, binary=binary, loss=loss, alpha=alpha, reg1=reg1, reg2=reg2, stats=stats)
+        super().__init__(backend=backend, binary=binary, loss=loss, alpha=alpha,
+                         reg_1=reg_1, reg_2=reg_2, reg_inf=reg_inf, stats=stats)
 
     # noinspection PyPep8Naming
     def _build(self, x, y, p, v):
@@ -233,6 +270,8 @@ class ExplicitZerosMaster(ShapeConstrainedMaster):
         right_hand_sides = np.atleast_1d(self.backend.dot(A.T, v))
         self.constraint.add(expression=w[1], backend=self.backend)
         self.backend.add_constraints([lhs == rhs for lhs, rhs in zip(left_hand_sides, right_hand_sides)])
+        # return weights and surrogate model predictions
+        return w, self.backend.dot(A, w)
 
 
 class CovarianceBasedMaster(ShapeConstrainedMaster):
@@ -248,8 +287,9 @@ class CovarianceBasedMaster(ShapeConstrainedMaster):
                  degree: int = 1,
                  loss: Union[str, Loss] = 'auto',
                  alpha: Union[str, float, Optimizer] = 'harmonic',
-                 reg1: Optional[float] = None,
-                 reg2: Optional[float] = None,
+                 reg_1: Optional[float] = None,
+                 reg_2: Optional[float] = None,
+                 reg_inf: Optional[float] = None,
                  stats: Union[bool, List[str]] = False):
         # check data entry
         assert degree > 0, f"'degree' should be a positive integer, got {degree}"
@@ -263,15 +303,23 @@ class CovarianceBasedMaster(ShapeConstrainedMaster):
         self.degree: int = degree
         """The degree of the polynomial kernel."""
 
-        super().__init__(backend=backend, binary=binary, loss=loss, alpha=alpha, reg1=reg1, reg2=reg2, stats=stats)
+        super().__init__(backend=backend, binary=binary, loss=loss, alpha=alpha,
+                         reg_1=reg_1, reg_2=reg_2, reg_inf=reg_inf, stats=stats)
 
+    # noinspection PyPep8Naming
     def _build(self, x, y, p, v):
         x = x[self.feature].values
-        thetas = []
+        cov_xy = self.backend.mean(x * v) - x.mean() * self.backend.mean(v)
+        var_x = np.var(x)
+        w = cov_xy / var_x
+        self.constraint.add(expression=w, backend=self.backend)
         for d in np.arange(self.degree) + 1:
             xd = x ** d
             cov_xd = np.cov(x, xd, bias=True)[0, 1]
-            cov_xy = self.backend.mean(xd * v) - xd.mean() * self.backend.mean(v)
-            thetas.append(cov_xy / cov_xd)
-        self.constraint.add(expression=thetas[0], backend=self.backend)
-        self.backend.add_constraints([t == thetas[0] for t in thetas[1:]])
+            cov_xdy = self.backend.mean(xd * v) - xd.mean() * self.backend.mean(v)
+            # cov(x, y) / var(x) = cov(x^d, y) / cov(x^d, x)
+            self.backend.add_constraint(cov_xy * cov_xd == cov_xdy * var_x)
+        # prepend the bias term, i.e. avg(y) - w1 * avg(x), in order to compute the surrogate model predictions
+        w = np.array([self.backend.mean(v) - w * x.mean(), cov_xy / var_x] + [0] * (self.degree - 1))
+        A = PolynomialFeatures(degree=self.degree).fit_transform(x.reshape((-1, 1)))
+        return w, self.backend.dot(A, w)

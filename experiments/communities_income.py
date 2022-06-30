@@ -17,6 +17,9 @@ kernels = [1, 2, 3, 5, 10]
 iterations = 5
 learner = 'lr 2'
 master = 'covariance'
+reg_1 = None
+reg_2 = None
+reg_inf = None
 preprocess = False
 weights = False
 backend = 'gurobi'
@@ -59,11 +62,13 @@ if __name__ == '__main__':
         # build master
         if master == 'default':
             shapes = [Shape('perCapInc', constraints=[None, cst, *[Null() for _ in range(1, k)]], kernel=k)]
-            mst = DefaultMaster(shapes=shapes, backend=backend, binary=False)
+            mst = DefaultMaster(shapes=shapes, backend=backend, reg_1=reg_1, reg_2=reg_2, reg_inf=reg_inf, binary=False)
         elif master == 'zeros':
-            mst = ExplicitZerosMaster(feature='perCapInc', constraint=cst, degree=k, backend=backend, binary=False)
+            mst = ExplicitZerosMaster(feature='perCapInc', constraint=cst, degree=k, backend=backend,
+                                      reg_1=reg_1, reg_2=reg_2, reg_inf=reg_inf, binary=False)
         elif master == 'covariance':
-            mst = CovarianceBasedMaster(feature='perCapInc', constraint=cst, degree=k, backend=backend, binary=False)
+            mst = CovarianceBasedMaster(feature='perCapInc', constraint=cst, degree=k, backend=backend,
+                                        reg_1=reg_1, reg_2=reg_2, reg_inf=reg_inf, binary=False)
         else:
             raise AssertionError(f"Unknown master '{master}'")
 

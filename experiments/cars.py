@@ -17,21 +17,23 @@ from src.master import DefaultMaster, Shape, ExplicitZerosMaster, CovarianceBase
 from src.metrics import SoftShape
 
 theta = 0.0
-kernels = [10]
-iterations = 10
+kernels = [1]
+iterations = 8
 units = [8, 8]
+reg = None  # l2(1e-4)
 master = 'covariance'
-reg1 = 0.2
-reg2 = None
+reg_1 = None
+reg_2 = None
+reg_inf = None
 callbacks = True
 preprocess = True
 weights = True
 backend = GurobiBackend(time_limit=30)
 verbose = 1
-# features = [['predictions/mse', 'predictions/r2', 'predictions/monotonicity'],
-#             ['adjusted/shape_w0', 'adjusted/shape_w1', 'adjusted/shape_w+']]
-# plot = dict(orient_rows=True, features=features)
-plot = dict(orient_rows=True)
+features = [['predictions/mse', 'predictions/r2', 'predictions/monotonicity'],
+            # ['adjusted/shape_w0', 'adjusted/shape_w1', 'adjusted/shape_w+']]
+            ['inspection/norm_1', 'inspection/norm_2', 'inspection/norm_inf']]
+plot = dict(orient_rows=True, features=features)
 
 
 # noinspection PyShadowingNames
@@ -66,6 +68,7 @@ if __name__ == '__main__':
         if preprocess:
             x, y = Scaler('std').fit_transform(x), Scaler('norm').fit_transform(y)
     metrics = [MSE(), R2(), MonotonicViolation(lambda v: compute_monotonicities(v, v, directions=[-1]))]
+    # noinspection PyTypeChecker
     cst = Lower(0) if theta == '<' else (Null() if theta == 0.0 else Smaller(theta))
 
     # test different polynomial kernels
@@ -73,18 +76,20 @@ if __name__ == '__main__':
     for k in kernels:
         print(f'KERNEL {k}')
         # build learner
-        lrn = TensorflowMLP(loss='mse', hidden_units=units, epochs=1000, verbose=False)
+        # reg = dict(network_regularizer=regularizer) if network_reg else dict(kernel_regularizer=regularizer)
+        # lrn = RegularizedMLP(loss='mse', hidden_units=units, epochs=1000, verbose=False, **reg)
+        lrn = TensorflowMLP(loss='mse', hidden_units=units, epochs=1000, verbose=False, kernel_regularizer=reg)
 
         # build master
         if master == 'default':
             shapes = [Shape('price', constraints=[None, cst, *[Null() for _ in range(1, k)]], kernel=k)]
-            mst = DefaultMaster(shapes=shapes, backend=backend, reg1=reg1, reg2=reg2, binary=False)
+            mst = DefaultMaster(shapes=shapes, backend=backend, reg_1=reg_1, reg_2=reg_2, reg_inf=reg_inf, binary=False)
         elif master == 'zeros':
             mst = ExplicitZerosMaster(feature='price', constraint=cst, degree=k, backend=backend,
-                                      reg1=reg1, reg2=reg2, binary=False)
+                                      reg_1=reg_1, reg_2=reg_2, reg_inf=reg_inf, binary=False)
         elif master == 'covariance':
             mst = CovarianceBasedMaster(feature='price', constraint=cst, degree=k, backend=backend,
-                                        reg1=reg1, reg2=reg2, binary=False)
+                                        reg_1=reg_1, reg_2=reg_2, reg_inf=reg_inf, binary=False)
         else:
             raise AssertionError(f"Unknown master '{master}'")
 

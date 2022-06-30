@@ -18,6 +18,9 @@ kernels = [1, 2, 3, 5]
 iterations = 5
 learner = 'lr'
 master = 'covariance'
+reg_1 = None
+reg_2 = None
+reg_inf = None
 preprocess = True
 weights = False
 backend = GurobiBackend(time_limit=30)
@@ -58,19 +61,15 @@ if __name__ == '__main__':
             raise AssertionError(f"Unknown learner '{learner}'")
 
         # build master
-        # TODO: which one is the parameter to increase numerical precision in Gurobi? The documentation mentions only
-        #  the tolerances to be used as stopping criteria or to distinguish between integer and floating point values
-        #  but these are explicitly indicated as not useful to increase precision. In fact, the documentation argues
-        #  that the best way to avoid numerical errors is to reformulate the master (indeed, the covariance based
-        #  formulation works very well even for higher-order polynomial kernels differently from both the default
-        #  and the explicit zeros formulation, and it is even a lot faster).
         if master == 'default':
             shapes = [Shape('age', constraints=[None, cst, *[Null() for _ in range(1, k)]], kernel=k)]
-            mst = DefaultMaster(shapes=shapes, backend=backend, binary=True)
+            mst = DefaultMaster(shapes=shapes, backend=backend, reg_1=reg_1, reg_2=reg_2, reg_inf=reg_inf, binary=True)
         elif master == 'zeros':
-            mst = ExplicitZerosMaster(feature='age', constraint=cst, degree=k, backend=backend, binary=True)
+            mst = ExplicitZerosMaster(feature='age', constraint=cst, degree=k, backend=backend,
+                                      reg_1=reg_1, reg_2=reg_2, reg_inf=reg_inf, binary=True)
         elif master == 'covariance':
-            mst = CovarianceBasedMaster(feature='age', constraint=cst, degree=k, backend=backend, binary=True)
+            mst = CovarianceBasedMaster(feature='age', constraint=cst, degree=k, backend=backend,
+                                        reg_1=reg_1, reg_2=reg_2, reg_inf=reg_inf, binary=True)
         else:
             raise AssertionError(f"Unknown master '{master}'")
 

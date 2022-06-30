@@ -26,14 +26,12 @@ if __name__ == '__main__':
         files = [filepath.joinpath(gzip) for gzip in os.listdir(filepath)]
     df = pd.read_parquet(files[dataset]).rename(columns={'timestamp': 'index'}).set_index('index')
 
-    # TODO: keeping avg information only for the moment, may need to change it
+    # keeping avg information only for the moment, may need to change it
     x = df.drop(columns=['label', 'New_label']).astype('float32')
     x = x[[f for f in x.columns if 'avg:' in f]].rename(columns=lambda f: f[4:])
     y = df['New_label'].astype('category').cat.codes.values
 
-    # TODO: which features to exclude?
-    #   > 'cpu_idle' and 'cpu_aidle' (and btw what is the difference?)
-    #   > 'load_one', 'load_five' and 'load_fifteen' (where are the others?)
+    # which features to exclude?
     features = [f for f in x.columns if 'load' in f]
 
     # build learner
