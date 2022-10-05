@@ -27,6 +27,7 @@ if __name__ == '__main__':
     # config shape-related metrics with (relative) accepted violations
     violations = {}
     for f, c in x.transpose().iterrows():
+        f = str(f)
         if f.startswith('race'):
             c = c.values.reshape((-1, 1))
             c = np.concatenate((np.ones_like(c), c), axis=1)

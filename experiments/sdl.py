@@ -1,4 +1,3 @@
-import numpy as np
 from moving_targets.learners import LinearRegression, TensorflowMLP
 from moving_targets.metrics import MSE, R2
 
@@ -34,11 +33,11 @@ if __name__ == '__main__':
 
         # build learner
         if learner == 'mlp':
-            lrn = TensorflowMLP(loss='mse', hidden_units=[8, 8], epochs=1000, verbose=False, mask=np.nan)
+            lrn = TensorflowMLP(loss='mse', hidden_units=[8, 8], epochs=1000, verbose=False)
         elif 'lr' in learner:
             lrn = learner.split(' ')
             lrn = 1 if len(lrn) == 1 else int(lrn[1])
-            lrn = LinearRegression(polynomial=lrn, mask=np.nan)
+            lrn = LinearRegression(polynomial=lrn)
         else:
             raise AssertionError(f"Unknown learner '{learner}'")
 

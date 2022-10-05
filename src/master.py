@@ -1,10 +1,9 @@
 from typing import Dict, Union, List, Callable, Optional
 
 import numpy as np
-from numpy.linalg import norm
 from moving_targets.masters import Master
 from moving_targets.masters.backends import Backend
-from moving_targets.masters.losses import Loss, HammingDistance, aliases
+from moving_targets.masters.losses import Loss, aliases, MAE, MSE
 from moving_targets.masters.optimizers import Optimizer
 from sklearn.preprocessing import PolynomialFeatures
 
@@ -123,7 +122,7 @@ class ShapeConstrainedMaster(Master):
 
         self.w, self.vp = None, None
 
-        super().__init__(backend=backend, loss=loss, alpha=alpha, stats=stats, mask=np.nan)
+        super().__init__(backend=backend, loss=loss, alpha=alpha, stats=stats)
 
     def _build(self, x, y, p, v):
         raise NotImplementedError("Please implement abstract method _build")
@@ -132,26 +131,11 @@ class ShapeConstrainedMaster(Master):
         loss = ('hd' if self.binary else 'mse') if loss == 'auto' else loss
         loss_class = aliases.get(loss)
         assert loss_class is not None, f"Unknown loss '{loss}'"
-        if loss_class == HammingDistance:
-            assert self.binary, "HammingDistance cannot deal with continuous variables"
-            return loss_class(labelling=False)
+        # check for continuous/binary targets in case of regression losses
+        if loss_class in [MAE, MSE]:
+            return loss_class(binary=self.binary, name=loss)
         else:
-            return loss_class(binary=self.binary)
-
-    def on_backend_solved(self, x, y, p, z):
-        # print()
-        # w = np.array([wi if isinstance(wi, (int, float)) else self.backend.get_value(wi) for wi in self.w])
-        # for i, wi in enumerate(w):
-        #     print(f"w[{i}]: {wi}")
-        # print()
-        vp = self.backend.get_values(self.vp)
-        self.log(**{
-            'inspection/norm_1': norm(z - vp, 1),
-            'inspection/norm_2': norm(z - vp, 2),
-            'inspection/norm_inf': norm(z - vp, np.inf)
-        })
-        # print()
-        self.w, self.vp = None, None
+            return loss_class(name=loss)
 
     # noinspection PyPep8Naming
     def build(self, x, y, p):

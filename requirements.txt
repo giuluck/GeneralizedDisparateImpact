@@ -1,8 +1,10 @@
 fastparquet
 gurobipy
 jupyter
-moving-targets
 networkx
+numpy
+pandas
 pyarrow
 seaborn
 tensorflow
+wandb

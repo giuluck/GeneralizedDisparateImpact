@@ -162,7 +162,7 @@ def run(x, y, features, master, learner, metrics=(), callbacks=(), iterations=5,
             cbs += [ICECallback(feature=f, samples=50, steps=20) for f in features]
         else:
             raise AssertionError(f"Unknown callback alias '{c}'")
-    model = MACS(init_step='pretraining', learner=learner, master=master, metrics=metrics, mask=np.nan)
+    model = MACS(init_step='pretraining', learner=learner, master=master, metrics=metrics)
     history = model.fit(x=x, y=y, iterations=iterations, callbacks=cbs, verbose=verbose)
     if isinstance(plot, dict):
         history.plot(**plot)
