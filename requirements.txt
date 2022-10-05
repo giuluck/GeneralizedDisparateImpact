@@ -1,10 +1,7 @@
-fastparquet
 gurobipy
 jupyter
-networkx
 numpy
 pandas
-pyarrow
 seaborn
 tensorflow
 wandb

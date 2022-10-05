@@ -1,77 +1,88 @@
-from typing import Callable, Union
+from typing import Callable
 
 import numpy as np
-from moving_targets.metrics import Metric
+import pandas as pd
 from sklearn.preprocessing import PolynomialFeatures
 
+from moving_targets.metrics import Metric, DIDI
 
-class SoftShape(Metric):
-    """Measures the shape of a feature as the weight(s) of the linear regression model trained on (a kernel of) that
-    feature with respect to the target.
 
-    The kernel function allows to inspect non-linear shapes of that feature. For example, if we want to inspect the
-    concavity we may use a polynomial kernel with degree two (i.e., k(x) -> 1 + x + x^2), and eventually pass a
-    postprocessing function that returns only the weight associated to the third feature, which is indeed x^2.
-    """
+class RegressionWeight(Metric):
+    """Computes the weight(s) of a linear regression model trained uniquely on the given feature after it gets
+    processed via a polynomial kernel with the given degree."""
 
-    def __init__(self,
-                 feature: str,
-                 kernels: Union[None, int, Callable] = 1,
-                 postprocessing: Union[None, Callable] = None,
-                 name='shape'):
+    def __init__(self, feature: str, degree: int = 1, higher_orders: str = 'max', name: str = 'weight'):
         """
         :param feature:
             The name of the feature to inspect.
 
-        :param kernels:
-            If None is passed, the input feature is not transformed. If an integer is passed, the input feature is
-            transformed via a polynomial kernel up to the given degree, with bias included (the default behaviour is,
-            indeed, to transform feature f into [1|f]). Otherwise, an explicit kernel function must be passed.
+        :param degree:
+            The degree of the polynomial kernel.
 
-        :param postprocessing:
-            A function f(w) -> w' that processes the weights of the linear regression model. It may either return a
-            dictionary associating a key to each weight (or a subset of such) or a single scalar representing the
-            aggregated metric value. If None, returns all the weights related to each transformation of the feature
-            labelled as 'w0', 'w1' and so on (actually, if the kernel is polynomial, automatically removes the
-            intercept from the list), or a single scalar value if the kernel is such that a single feature is used as
-            input of the linear regression model.
+        :param higher_orders:
+            The policy on how to present the weights of higher-order degrees if a kernel > 1 is passed. Options are
+            'none' to get just the first-order degree,  'all' to get all the higher-order degrees, or 'max' to get
+            just the maximal higher-order degree.
 
         :param name:
             The name of the metric.
         """
-        super(SoftShape, self).__init__(name=name)
+        super(RegressionWeight, self).__init__(name=name)
 
-        # handle default postprocessing function
-        # - if linear kernel, returns the weight of the feature
-        # - if polynomial kernel, returns each weight apart from the intercept
-        # - if custom or no kernel, returns either a single scalar or a dictionary of features
-        if postprocessing is None:
-            if kernels == 1:
-                postprocessing = lambda w: w[1]
-            elif isinstance(kernels, int):
-                postprocessing = lambda w: {f'w{i + 1}': v for i, v in enumerate(w[1:])}
-            else:
-                postprocessing = lambda w: w[0] if w.size == 1 else {f'w{i}': v for i, v in enumerate(w)}
-
-        # handle default kernel function
-        # - if no kernel, uses the identity function (i.e., simply retrieves the feature)
-        # - if int, builds a polynomial kernel and applies it
-        if kernels is None:
-            kernels = lambda x, f: x[[f]]
-        elif isinstance(kernels, int):
-            kernel = PolynomialFeatures(degree=kernels, include_bias=True)
-            kernels = lambda x, f: kernel.fit_transform(x[[f]])
+        # handle higher-orders postprocessing
+        if degree == 1 or higher_orders == 'none':
+            higher_orders = lambda w: w[1]
+        elif higher_orders == 'max':
+            higher_orders = lambda w: {'w1': w[1], 'w+': np.max(w[2:])}
+        elif higher_orders == 'all':
+            higher_orders = lambda w: {f'w{i + 1}': v for i, v in enumerate(w[1:])}
+        else:
+            raise AssertionError(f"Unknown higher orders option '{higher_orders}'")
 
         self.feature = feature
         """The name of the feature to inspect."""
 
-        self.kernels: Callable = kernels
+        self.kernel: Callable = PolynomialFeatures(degree=degree, include_bias=True).fit_transform
         """The kernel function to transform each constrained feature."""
 
-        self.postprocessing: Callable = postprocessing
-        """The postprocessing function to return the selected weight(s)."""
+        self.higher_orders: Callable = higher_orders
+        """The postprocessing function to return the higher-orders weights."""
 
     def __call__(self, x, y, p):
-        a = self.kernels(x, self.feature)
+        a = self.kernel(x[[self.feature]])
         w, _, _, _ = np.linalg.lstsq(a, p, rcond=None)
-        return self.postprocessing(w)
+        return self.higher_orders(np.abs(w))
+
+
+class BinnedDIDI(DIDI):
+    """Performs a binning operation on a continuous protected attribute then computes the DIDI on each bin."""
+
+    def __init__(self,
+                 classification: bool,
+                 protected: str,
+                 bins: int = 2,
+                 percentage: bool = True,
+                 name: str = 'didi'):
+        """
+        :param classification:
+            Whether the DIDI is computed for a classification or a regression task.
+
+        :param protected:
+            The name of the protected feature.
+
+        :param bins:
+            The number of bins.
+
+        :param percentage:
+            Whether the DIDI is computed as an absolute or a relative value.
+
+        :param name:
+            The name of the metric.
+        """
+        super(BinnedDIDI, self).__init__(classification, protected, percentage, name=f'{name}_{bins}')
+        self.bins = bins
+
+    def __call__(self, x, y, p):
+        x = x.copy()
+        x[self.protected] = pd.qcut(x[self.protected], q=self.bins).cat.codes
+        return super(BinnedDIDI, self).__call__(x, y, p)
