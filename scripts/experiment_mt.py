@@ -1,5 +1,6 @@
-import time
 import os
+import shutil
+import time
 
 os.environ['WANDB_SILENT'] = 'true'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -41,3 +42,4 @@ if __name__ == '__main__':
                 exp.run_instance(model=mdl, x=x, y=y, fold=fold, index=None, log=False, show=False)
                 print(f' -- elapsed time = {time.time() - start:.2f}s')
         print('-------------------------------------------------')
+    shutil.rmtree('wandb')

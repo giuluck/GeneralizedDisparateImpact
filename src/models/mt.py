@@ -142,10 +142,10 @@ class MT(Model):
     def __init__(self,
                  learner: str,
                  classification: bool,
-                 features: Union[str, List[str]],
+                 excluded: Union[str, List[str]],
                  thresholds: Union[float, List[float]] = 0.0,
                  degrees: Union[int, List[int]] = 1,
-                 iterations: int = 15,
+                 iterations: int = 10,
                  metrics: List[Metric] = (),
                  fold: Optional[Dataset] = None,
                  callbacks: List[Callback] = (),
@@ -158,14 +158,14 @@ class MT(Model):
         :param classification:
             Whether we are dealing with a binary classification or a regression task.
 
-        :param features:
-            The features to exclude.
+        :param excluded:
+            The features to be excluded.
 
         :param thresholds:
-            Either a common threshold or a list of thresholds for each of the features to exclude.
+            Either a common threshold or a list of thresholds for each of the features to be excluded.
 
         :param degrees:
-            Either a common kernel degree or a list of kernel degrees for each of the features to exclude.
+            Either a common kernel degree or a list of kernel degrees for each of the features to be excluded.
 
         :param iterations:
             The number of Moving Targets' iterations.
@@ -190,7 +190,7 @@ class MT(Model):
             name='mt',
             learner=learner,
             classification=classification,
-            features=features,
+            excluded=excluded,
             thresholds=thresholds,
             degrees=degrees,
             iterations=iterations
@@ -203,7 +203,7 @@ class MT(Model):
 
         mst = CausalExclusionMaster(classification=classification,
                                     thresholds=thresholds,
-                                    features=features,
+                                    features=excluded,
                                     degrees=degrees)
 
         self.macs: MACS = MACS(init_step='pretraining', learner=lrn, master=mst, metrics=metrics)

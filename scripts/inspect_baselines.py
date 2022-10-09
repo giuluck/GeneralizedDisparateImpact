@@ -1,7 +1,7 @@
 import seaborn as sns
+from tensorflow.python.keras.callbacks import EarlyStopping
 
 from src.experiments import get
-from src.metrics import RegressionWeight
 
 sns.set_context('notebook')
 sns.set_style('whitegrid')
@@ -9,16 +9,13 @@ sns.set_style('whitegrid')
 if __name__ == '__main__':
     exp = get('communities race')
     fold = exp.get_folds(folds=1)
-    degrees = 1 if 'race' in exp.__name__ else 3
     model = exp.get_model(
-        model='mt',
-        fold=fold,
-        degrees=degrees,
-        iterations=15,
-        metrics=exp.metrics + [RegressionWeight(feature=f, degree=degrees, name=f) for f in exp.excluded],
-        history=dict(features=None, orient_rows=True, excluded=['adjusted/*', 'predictions/*']),
-        verbose=True
-    )
+        model='sbr',
+        alpha=0.0,
+        epochs=1000,
+        val_split=0.2,
+        callbacks=[EarlyStopping(monitor='val_loss', patience=10)],
+        verbose=True)
     print('MODEL CONFIGURATION:')
     for k, v in model.config.items():
         print(f'  > {k} --> {v}')

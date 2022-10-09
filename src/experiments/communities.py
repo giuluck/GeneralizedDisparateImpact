@@ -3,13 +3,14 @@ from typing import Tuple, Union, List
 
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 from moving_targets.metrics import DIDI, Metric
+from moving_targets.util.scalers import Scaler
 from src.experiments.experiment import Experiment
 from src.metrics import BinnedDIDI
 from src.models.model import Model
 from src.models.mt import MT
+from src.models.sbr import SBR
 
 
 class Communities(Experiment):
@@ -19,10 +20,8 @@ class Communities(Experiment):
     def load_data() -> Tuple[pd.DataFrame, np.ndarray]:
         with importlib.resources.path('data', 'communities.csv') as filepath:
             df = pd.read_csv(filepath)
-        x, y = df.drop('violentPerPop', axis=1), df[['violentPerPop']].values
-        x = pd.DataFrame(StandardScaler().fit_transform(x), columns=x.columns)
-        y = MinMaxScaler().fit_transform(y).flatten()
-        return x, y
+        x, y = df.drop('violentPerPop', axis=1), df['violentPerPop'].values
+        return Scaler('std', race='none').fit_transform(x), Scaler('norm').fit_transform(y)
 
     def __init__(self, excluded: Union[str, List[str]], metrics: List[Metric]):
         """
@@ -36,15 +35,17 @@ class Communities(Experiment):
 
     def get_model(self, model: str, **kwargs) -> Model:
         if model == 'mt':
-            # default arguments for moving targets model which might be overridden by custom kwargs
-            args = dict(
-                degrees=1,
-                learner='lr',
-                iterations=15,
-                metrics=self.metrics
-            )
-            args.update(kwargs)
-            return MT(classification=False, features=self.excluded, thresholds=self.THRESHOLD, **args)
+            # handle tasks-specific default arguments
+            learner = kwargs.get('learner') or 'lr'
+            metrics = kwargs.get('metrics') or self.metrics
+            return MT(classification=False,
+                      excluded=self.excluded,
+                      thresholds=self.THRESHOLD,
+                      learner=learner,
+                      metrics=metrics,
+                      **kwargs)
+        elif model == 'sbr':
+            return SBR(classification=False, excluded=self.excluded, threshold=self.THRESHOLD, **kwargs)
         else:
             raise AssertionError(f"Unknown model alias '{model}'")
 
@@ -68,6 +69,6 @@ class CommunitiesIncome(Communities):
 
     def get_model(self, model: str, **kwargs) -> Model:
         if model == 'mt':
-            # when using moving targets in this scenario the default argument for the degree is 3
+            # handle tasks-specific default degree for continuous fairness scenarios
             kwargs['degrees'] = kwargs.get('degrees') or 3
         return super(CommunitiesIncome, self).get_model(model, **kwargs)
