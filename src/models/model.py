@@ -1,9 +1,7 @@
-from typing import Optional, Any, Dict
+from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
-
-from moving_targets.util.typing import Dataset
 
 
 class Model:

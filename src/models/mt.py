@@ -211,7 +211,7 @@ class MT(Model):
 
         self.fit_params: Dict[str, Any] = {
             'iterations': iterations,
-            'callbacks': callbacks,
+            'callbacks': list(callbacks),
             'verbose': verbose,
             'val_data': fold
         }
@@ -220,6 +220,9 @@ class MT(Model):
         self.history: Union[bool, Dict[str, Any]] = history
         """Either a boolean value representing whether or not to plot the Moving Targets' history or a dictionary of
         parameters to pass to the History's plot function."""
+
+    def add_callback(self, callback: Callback):
+        self.fit_params['callbacks'].append(callback)
 
     def _fit(self, x: pd.DataFrame, y: np.ndarray):
         history = self.macs.fit(x, y, **self.fit_params)

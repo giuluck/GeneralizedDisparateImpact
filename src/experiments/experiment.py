@@ -83,7 +83,7 @@ class Experiment:
         """
         raise NotImplementedError("please implement method 'get_model'")
 
-    def get_folds(self, folds: Optional[int] = None, seed: int = 0) -> Union[Dataset, List[Dataset]]:
+    def get_folds(self, folds: Optional[int] = None, seed: int = 0) -> Union[List[Dataset], Dataset]:
         """Gets the data split in folds.
 
         With folds = None returns a dictionary of type {'train': (x, y)}.
@@ -152,13 +152,13 @@ class Experiment:
         folds = self.get_folds(folds=folds, seed=self.SEED)
         if isinstance(folds, dict):
             x, y = folds['train']
-            model = self.get_model(model, **kwargs)
-            self.run_instance(x=x, y=y, model=model, fold=folds, index=None, show=show, log=log)
+            mdl = self.get_model(model, **kwargs)
+            self.run_instance(x=x, y=y, model=mdl, fold=folds, index=None, show=show, log=log)
         else:
             for idx, fold in enumerate(folds):
                 x, y = fold['train']
-                model = self.get_model(model, **kwargs)
-                self.run_instance(x=x, y=y, model=model, fold=fold, index=idx, show=show, log=log)
+                mdl = self.get_model(model, **kwargs)
+                self.run_instance(x=x, y=y, model=mdl, fold=fold, index=idx, show=show, log=log)
 
     def run_instance(self,
                      x: pd.DataFrame,
