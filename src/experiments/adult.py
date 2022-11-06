@@ -8,9 +8,7 @@ from moving_targets.metrics import DIDI, Metric
 from moving_targets.util.scalers import Scaler
 from src.experiments.experiment import Experiment
 from src.metrics import BinnedDIDI
-from src.models.model import Model
-from src.models.mt import MT
-from src.models.sbr import SBR
+from src.models import Model, MT, MLP, SBR
 
 
 class Adult(Experiment):
@@ -32,7 +30,7 @@ class Adult(Experiment):
         :param metrics:
             The list of task-specific evaluation metrics.
         """
-        super(Adult, self).__init__(excluded=excluded, classification=True, metrics=metrics)
+        super(Adult, self).__init__(excluded=excluded, classification=True, units=[32, 32, 32], metrics=metrics)
 
     def get_model(self, model: str, **kwargs) -> Model:
         if model == 'mt':
@@ -47,19 +45,21 @@ class Adult(Experiment):
                       **kwargs)
         elif model == 'sbr':
             return SBR(classification=True, excluded=self.excluded, threshold=self.THRESHOLD, **kwargs)
+        elif model == 'mlp':
+            return MLP(classification=True, **kwargs)
         else:
             raise AssertionError(f"Unknown model alias '{model}'")
 
 
-class AdultRace(Adult):
+class AdultCategorical(Adult):
     def __init__(self):
         """"""
         metrics = [DIDI(protected='race', classification=True)]
         categories = ['Amer-Indian-Eskimo', 'Asian-Pac-Islander', 'Black', 'Other', 'White']
-        super(AdultRace, self).__init__(excluded=[f'race_{r}' for r in categories], metrics=metrics)
+        super(AdultCategorical, self).__init__(excluded=[f'race_{r}' for r in categories], metrics=metrics)
 
 
-class AdultAge(Adult):
+class AdultContinuous(Adult):
     def __init__(self, bins: Tuple[int] = (2, 3, 5, 10)):
         """Adult dataset with 'age' as protected feature.
 
@@ -67,10 +67,10 @@ class AdultAge(Adult):
             The number of bins to be used in the BinnedDIDI metric.
         """
         metrics = [BinnedDIDI(bins=b, protected='age', classification=True) for b in bins]
-        super(AdultAge, self).__init__(excluded='age', metrics=metrics)
+        super(AdultContinuous, self).__init__(excluded='age', metrics=metrics)
 
     def get_model(self, model: str, **kwargs) -> Model:
         if model == 'mt':
             # handle tasks-specific default degree for continuous fairness scenarios
             kwargs['degrees'] = kwargs.get('degrees') or 3
-        return super(AdultAge, self).get_model(model, **kwargs)
+        return super(AdultContinuous, self).get_model(model, **kwargs)

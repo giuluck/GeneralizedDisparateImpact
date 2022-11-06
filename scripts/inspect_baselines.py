@@ -7,7 +7,7 @@ sns.set_context('notebook')
 sns.set_style('whitegrid')
 
 if __name__ == '__main__':
-    exp = get('communities race')
+    exp = get('communities continuous')
     fold = exp.get_folds(folds=1)
     model = exp.get_model(
         model='sbr',
@@ -21,4 +21,4 @@ if __name__ == '__main__':
         print(f'  > {k} --> {v}')
     print('-------------------------------------------------')
     x, y = fold['train']
-    exp.run_instance(model=model, x=x, y=y, fold=fold, index=None, log=False, show=True)
+    exp.run_instance(model=model, x=x, y=y, fold=fold, index=None, log=None, show=True)

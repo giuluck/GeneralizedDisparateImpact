@@ -18,7 +18,6 @@ from src.models.model import Model
 class Experiment:
     SEED: int = 0
     ENTITY: str = 'giuluck'
-    PROJECT: str = 'non_causal_exclusion'
 
     @staticmethod
     def setup(seed: int):
@@ -40,13 +39,16 @@ class Experiment:
         """
         raise NotImplementedError("please implement static method 'load_data'")
 
-    def __init__(self, excluded: Union[str, List[str]], classification: bool, metrics: List[Metric]):
+    def __init__(self, excluded: Union[str, List[str]], classification: bool, units: List[int], metrics: List[Metric]):
         """
         :param excluded:
             Either a single feature or the list of features to exclude.
 
         :param classification:
             Whether this is a classification or a regression task.
+
+        :param units:
+            The neural models hidden units.
 
         :param metrics:
             The list of task-specific evaluation metrics.
@@ -65,6 +67,9 @@ class Experiment:
 
         self.classification: bool = classification
         """Whether this is a classification or a regression task."""
+
+        self.units: List[int] = units
+        """The neural models hidden units."""
 
         self.metrics: List[Metric] = [*task_metrics, *metrics]
         """The list of evaluation metrics."""
@@ -129,7 +134,7 @@ class Experiment:
             metrics[split] = {m.__name__: m(x, y, p) for m in self.metrics}
         return pd.DataFrame.from_dict(data=metrics)
 
-    def run(self, model: str, folds: Optional[int], show: bool = True, log: bool = True, **kwargs):
+    def run(self, model: str, folds: Optional[int], show: bool = True, log: str = 'non_causal_exclusion', **kwargs):
         """Runs the experiment.
 
         :param model:
@@ -143,7 +148,7 @@ class Experiment:
             Whether or not to show the results on the console at the end of each instance run.
 
         :param log:
-            Whether or not to log the results of each instance run on Weights & Biases.
+            Either a Weights & Biases project name on which to log results or None for no logging.
 
         :param kwargs:
             The model custom arguments.
@@ -167,7 +172,7 @@ class Experiment:
                      fold: Dataset,
                      index: Optional[int],
                      show: bool,
-                     log: bool):
+                     log: Optional[str]):
         """Runs a single instance of k-fold cross-validation experiment.
 
         :param x:
@@ -189,14 +194,14 @@ class Experiment:
             Whether or not to show the results on the console at the end of each instance run.
 
         :param log:
-            Whether or not to log the results of each instance run on Weights & Biases.
+            Either a Weights & Biases project name on which to log results or None for no logging.
 
         """
         # LOGGING & PRINTING
-        if log:
+        if log is not None:
             wandb.init(name=self.__name__,
                        entity=self.ENTITY,
-                       project=self.PROJECT,
+                       project=log,
                        config={'fold': index, **model.config})
         # EXPERIMENT RUN
         self.setup(seed=self.SEED)
@@ -208,7 +213,7 @@ class Experiment:
         if log:
             logs = {'elapsed_time': elapsed_time}
             for split in metrics.columns:
-                logs += {f'{split}/{metric}' for metric, value in metrics[split].items()}
+                logs.update({f'{split}/{metric}': value for metric, value in metrics[split].items()})
             wandb.log(logs)
             wandb.finish()
         if show:

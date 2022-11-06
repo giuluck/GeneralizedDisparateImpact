@@ -8,9 +8,7 @@ from moving_targets.metrics import DIDI, Metric
 from moving_targets.util.scalers import Scaler
 from src.experiments.experiment import Experiment
 from src.metrics import BinnedDIDI
-from src.models.model import Model
-from src.models.mt import MT
-from src.models.sbr import SBR
+from src.models import Model, MT, SBR, MLP
 
 
 class Communities(Experiment):
@@ -31,7 +29,7 @@ class Communities(Experiment):
         :param metrics:
             The list of task-specific evaluation metrics.
         """
-        super(Communities, self).__init__(excluded=excluded, classification=False, metrics=metrics)
+        super(Communities, self).__init__(excluded=excluded, classification=False, units=[256, 256], metrics=metrics)
 
     def get_model(self, model: str, **kwargs) -> Model:
         if model == 'mt':
@@ -46,29 +44,31 @@ class Communities(Experiment):
                       **kwargs)
         elif model == 'sbr':
             return SBR(classification=False, excluded=self.excluded, threshold=self.THRESHOLD, **kwargs)
+        elif model == 'mlp':
+            return MLP(classification=False, **kwargs)
         else:
             raise AssertionError(f"Unknown model alias '{model}'")
 
 
-class CommunitiesRace(Communities):
+class CommunitiesCategorical(Communities):
     def __init__(self):
         """"""
         metrics = [DIDI(protected='race', classification=False)]
-        super(CommunitiesRace, self).__init__(excluded='race', metrics=metrics)
+        super(CommunitiesCategorical, self).__init__(excluded='race', metrics=metrics)
 
 
-class CommunitiesIncome(Communities):
+class CommunitiesContinuous(Communities):
     def __init__(self, bins: Tuple[int] = (2, 3, 5, 10)):
-        """Communities & Crime dataset with 'income' as protected feature.
+        """Communities & Crime dataset with 'pctBlack' as protected feature.
 
         :param bins:
             The number of bins to be used in the BinnedDIDI metric.
         """
-        metrics = [BinnedDIDI(bins=b, protected='perCapInc', classification=False) for b in bins]
-        super(CommunitiesIncome, self).__init__(excluded='perCapInc', metrics=metrics)
+        metrics = [BinnedDIDI(bins=b, protected='pctBlack', classification=False) for b in bins]
+        super(CommunitiesContinuous, self).__init__(excluded='perCapInc', metrics=metrics)
 
     def get_model(self, model: str, **kwargs) -> Model:
         if model == 'mt':
             # handle tasks-specific default degree for continuous fairness scenarios
             kwargs['degrees'] = kwargs.get('degrees') or 3
-        return super(CommunitiesIncome, self).get_model(model, **kwargs)
+        return super(CommunitiesContinuous, self).get_model(model, **kwargs)

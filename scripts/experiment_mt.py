@@ -1,19 +1,20 @@
 import os
-import shutil
-import time
 
 os.environ['WANDB_SILENT'] = 'true'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+import shutil
+import time
 
 from moving_targets.callbacks import WandBLogger
 from src.experiments import get
 from src.metrics import RegressionWeight
 
 datasets = {
-    'communities race': [1],
-    # 'communities income': [1, 2, 3, 5],
-    'adult race': [1],
-    # 'adult age': [1, 2, 3, 5]
+    'communities categorical': [1],
+    # 'communities continuous': [1, 2, 3, 5],
+    'adult categorical': [1],
+    # 'adult continuous': [1, 2, 3, 5]
 }
 
 if __name__ == '__main__':
@@ -39,7 +40,7 @@ if __name__ == '__main__':
                 )
                 # noinspection PyUnresolvedReferences
                 mdl.add_callback(WandBLogger(project='nci_mt', entity='giuluck', run_name=ds, fold=idx, **mdl.config))
-                exp.run_instance(model=mdl, x=x, y=y, fold=fold, index=None, log=False, show=False)
+                exp.run_instance(model=mdl, x=x, y=y, fold=fold, index=None, log=None, show=False)
                 print(f' -- elapsed time = {time.time() - start:.2f}s')
         print('-------------------------------------------------')
     shutil.rmtree('wandb')

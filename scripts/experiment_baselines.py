@@ -1,15 +1,16 @@
 import os
-import shutil
-import time
 
 os.environ['WANDB_SILENT'] = 'true'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
+import shutil
+import time
+
 from src.experiments import get
 
 datasets = {
-    'communities race': ['mt', 'sbr'],
-    'adult race': ['mt', 'sbr'],
+    'communities categorical': ['mt', 'sbr'],
+    'adult categorical': ['mt', 'sbr'],
 }
 
 if __name__ == '__main__':
@@ -27,7 +28,7 @@ if __name__ == '__main__':
                 start = time.time()
                 x, y = fold['train']
                 mdl = exp.get_model(model=model)
-                exp.run_instance(model=mdl, x=x, y=y, fold=fold, index=idx, log=True, show=False)
+                exp.run_instance(model=mdl, x=x, y=y, fold=fold, index=idx, log='nci_experiments', show=False)
                 print(f' -- elapsed time = {time.time() - start:.2f}s')
         print('-------------------------------------------------')
     shutil.rmtree('wandb')

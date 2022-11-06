@@ -255,6 +255,7 @@ class SBR(Model):
             threshold=threshold,
             val_split=val_split,
             units=units,
+            alpha=alpha,
             epochs=epochs,
             callbacks=callbacks
         )
