@@ -2,10 +2,13 @@ from typing import Dict, Union, List, Optional, Any
 
 import numpy as np
 import pandas as pd
+from torch import nn
 
 from moving_targets import MACS
 from moving_targets.callbacks import Callback
-from moving_targets.learners import LinearRegression, LogisticRegression
+from moving_targets.learners import LinearRegression, LogisticRegression, RandomForestClassifier, \
+    RandomForestRegressor, GradientBoostingClassifier, GradientBoostingRegressor
+from moving_targets.learners.torch_learners import TorchMLP
 from moving_targets.masters import Master
 from moving_targets.masters.backends import GurobiBackend
 from moving_targets.masters.losses import MSE, HammingDistance
@@ -138,7 +141,7 @@ class CausalExclusionMaster(Master):
         return z.round() if self.classification else z
 
 
-class MT(Model):
+class MovingTargets(Model):
     def __init__(self,
                  learner: str,
                  classification: bool,
@@ -150,7 +153,8 @@ class MT(Model):
                  fold: Optional[Dataset] = None,
                  callbacks: List[Callback] = (),
                  verbose: Union[bool, int] = False,
-                 history: Union[bool, Dict[str, Any]] = False):
+                 history: Union[bool, Dict[str, Any]] = False,
+                 **learner_kwargs):
         """
         :param learner:
             The learner alias.
@@ -185,26 +189,42 @@ class MT(Model):
         :param history:
             Either a boolean value representing whether or not to plot the Moving Targets' history or a dictionary of
             parameters to pass to the History's plot function.
+
+        :param learner_kwargs:
+            Additional arguments to be passed to the Learner constructor.
         """
-        super(MT, self).__init__(
-            name='mt',
-            learner=learner,
+        super(MovingTargets, self).__init__(
+            name=f'mt {learner}',
             classification=classification,
             excluded=excluded,
             thresholds=thresholds,
             degrees=degrees,
-            iterations=iterations
+            iterations=iterations,
+            **learner_kwargs
         )
 
         if learner == 'lr':
             lrn = LogisticRegression(max_iter=10000) if classification else LinearRegression()
+        elif learner == 'rf':
+            lrn = RandomForestClassifier() if classification else RandomForestRegressor()
+        elif learner == 'gb':
+            lrn = GradientBoostingClassifier() if classification else GradientBoostingRegressor()
+        elif learner == 'nn':
+            lrn = TorchMLP(
+                loss=nn.BCELoss() if classification else nn.MSELoss(),
+                output_activation=nn.Sigmoid() if classification else None,
+                verbose=False,
+                **learner_kwargs
+            )
         else:
             raise AssertionError(f"Unknown learner alias '{learner}'")
 
-        mst = CausalExclusionMaster(classification=classification,
-                                    thresholds=thresholds,
-                                    features=excluded,
-                                    degrees=degrees)
+        mst = CausalExclusionMaster(
+            classification=classification,
+            thresholds=thresholds,
+            features=excluded,
+            degrees=degrees
+        )
 
         self.macs: MACS = MACS(init_step='pretraining', learner=lrn, master=mst, metrics=metrics)
         """The MACS instance."""

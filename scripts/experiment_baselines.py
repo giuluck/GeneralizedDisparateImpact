@@ -9,8 +9,10 @@ import time
 from src.experiments import get
 
 datasets = {
-    'communities categorical': ['mt', 'sbr'],
-    'adult categorical': ['mt', 'sbr'],
+    'communities categorical': ['rf', 'gb', 'nn'],
+    'communities continuous': ['rf', 'gb', 'nn'],
+    'adult categorical': ['rf', 'gb', 'nn'],
+    'adult continuous': ['rf', 'gb', 'nn']
 }
 
 if __name__ == '__main__':

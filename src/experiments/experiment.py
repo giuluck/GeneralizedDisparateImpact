@@ -12,12 +12,22 @@ from sklearn.model_selection import train_test_split, KFold, StratifiedKFold
 
 from moving_targets.metrics import Metric, MSE, R2, CrossEntropy, Accuracy
 from moving_targets.util.typing import Dataset
-from src.models.model import Model
+from src.metrics import HGR
+from src.models import Model, RandomForest, GradientBoosting, NeuralNetwork, MovingTargets
 
 
 class Experiment:
     SEED: int = 0
+    """The random seed."""
+
     ENTITY: str = 'giuluck'
+    """The Weights&Biases entity name."""
+
+    EPOCHS: int = 200
+    """The neural network epochs."""
+
+    BATCH_SIZE: int = 128
+    "The neural network batch size."
 
     @staticmethod
     def setup(seed: int):
@@ -39,40 +49,51 @@ class Experiment:
         """
         raise NotImplementedError("please implement static method 'load_data'")
 
-    def __init__(self, excluded: Union[str, List[str]], classification: bool, units: List[int], metrics: List[Metric]):
+    def __init__(self,
+                 classification: bool,
+                 metrics: List[Metric],
+                 excluded: Union[str, List[str]],
+                 threshold: float,
+                 units: List[int]):
         """
-        :param excluded:
-            Either a single feature or the list of features to exclude.
-
         :param classification:
             Whether this is a classification or a regression task.
 
-        :param units:
-            The neural models hidden units.
-
         :param metrics:
             The list of task-specific evaluation metrics.
+
+        :param excluded:
+            Either a single feature or the list of features to exclude.
+
+        :param threshold:
+            The threshold for the feature to exclude.
+
+        :param units:
+            The neural networks default units.
         """
 
         task_metrics = [Accuracy(), CrossEntropy()] if classification else [R2(), MSE()]
 
-        self.__name__: str = '_'.join(re.split('(?=[A-Z])', self.__class__.__name__)).lower()
+        self.__name__: str = ' '.join(re.split('(?=[A-Z])', self.__class__.__name__)).lower().strip(' ')
         """The dataset name."""
 
         self.data: Tuple[pd.DataFrame, np.ndarray] = self.load_data()
         """The tuple (x, y) containing the input data and the target vector."""
 
-        self.excluded: List[str] = excluded if isinstance(excluded, list) else [excluded]
-        """The list of features whose causal effect should be excluded."""
-
         self.classification: bool = classification
         """Whether this is a classification or a regression task."""
 
-        self.units: List[int] = units
-        """The neural models hidden units."""
-
-        self.metrics: List[Metric] = [*task_metrics, *metrics]
+        self.metrics: List[Metric] = [*task_metrics, *metrics, HGR(feature=excluded)]
         """The list of evaluation metrics."""
+
+        self.excluded: List[str] = excluded if isinstance(excluded, list) else [excluded]
+        """The list of features whose causal effect should be excluded."""
+
+        self.threshold: float = threshold
+        """The threshold for the feature to exclude."""
+
+        self.units: List[int] = units
+        """The neural networks default units."""
 
     def get_model(self, model: str, **kwargs) -> Model:
         """Returns a model instance.
@@ -86,7 +107,38 @@ class Experiment:
         :return:
             The model instance.
         """
-        raise NotImplementedError("please implement method 'get_model'")
+        features = self.data[0].shape[1]
+        if model == 'rf':
+            return RandomForest(classification=self.classification, **kwargs)
+        elif model == 'gb':
+            return GradientBoosting(classification=self.classification, **kwargs)
+        elif model == 'nn':
+            return NeuralNetwork(
+                input_units=features,
+                classification=self.classification,
+                hidden_units=self.units,
+                epochs=self.EPOCHS,
+                batch_size=self.BATCH_SIZE,
+                **kwargs
+            )
+        elif model.startswith('mt '):
+            learner = model[3:]
+            if learner == 'nn':
+                kwargs.update({
+                    'epochs': self.EPOCHS,
+                    'batch_size': self.BATCH_SIZE,
+                    'hidden_units': self.units,
+                    'input_units': features
+                })
+            return MovingTargets(
+                learner=learner,
+                classification=self.classification,
+                thresholds=self.threshold,
+                excluded=self.excluded,
+                **kwargs
+            )
+        else:
+            raise AssertionError(f"Unknown model alias '{model}'")
 
     def get_folds(self, folds: Optional[int] = None, seed: int = 0) -> Union[List[Dataset], Dataset]:
         """Gets the data split in folds.
@@ -157,7 +209,7 @@ class Experiment:
         folds = self.get_folds(folds=folds, seed=self.SEED)
         if isinstance(folds, dict):
             x, y = folds['train']
-            mdl = self.get_model(model, **kwargs)
+            mdl = self.get_model(model, x=x, y=y, **kwargs)
             self.run_instance(x=x, y=y, model=mdl, fold=folds, index=None, show=show, log=log)
         else:
             for idx, fold in enumerate(folds):
@@ -199,10 +251,10 @@ class Experiment:
         """
         # LOGGING & PRINTING
         if log is not None:
-            wandb.init(name=self.__name__,
+            wandb.init(name=f'{model.__name__} - {self.__name__} ({index})',
                        entity=self.ENTITY,
                        project=log,
-                       config={'fold': index, **model.config})
+                       config={'dataset': self.__name__, 'model': model.__name__, 'fold': index, **model.config})
         # EXPERIMENT RUN
         self.setup(seed=self.SEED)
         start_time = time.time()

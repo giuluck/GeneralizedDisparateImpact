@@ -14,10 +14,13 @@ class Model:
             A dictionary of parameters that represent the configuration of the model.
         """
 
+        self.__name__: str = name
+        """The model name"""
+
         self.is_fit: bool = False
         """Whether or not the model has been fitted."""
 
-        self.config: Dict[str, Any] = {'model': name, **config}
+        self.config: Dict[str, Any] = config
         """A dictionary of parameters that represent the configuration of the model."""
 
     def _fit(self, x: pd.DataFrame, y: np.ndarray):

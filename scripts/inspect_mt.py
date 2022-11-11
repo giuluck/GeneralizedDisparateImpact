@@ -7,14 +7,14 @@ sns.set_context('notebook')
 sns.set_style('whitegrid')
 
 if __name__ == '__main__':
-    exp = get('communities categorical')
+    exp = get('adult categorical')
     fold = exp.get_folds(folds=1)
-    degrees = 1 if 'race' in exp.__name__ else 3
+    degrees = 1 if 'categorical' in exp.__name__ else 3
     model = exp.get_model(
-        model='mt',
+        model='mt nn',
         fold=fold,
         degrees=degrees,
-        iterations=15,
+        iterations=3,
         metrics=exp.metrics + [RegressionWeight(feature=f, degree=degrees, name=f) for f in exp.excluded],
         history=dict(features=None, orient_rows=True, excluded=['adjusted/*', 'predictions/*']),
         verbose=True

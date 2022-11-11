@@ -126,9 +126,13 @@ class ScikitClassifier(ScikitLearner):
         if self.task == 'multiclass' or probabilities.shape[1] > 2:
             # return probabilities matrix if the task is explicitly multiclass or if the number of classes is > 2
             return probabilities
-        else:
+        elif probabilities.shape[1] == 2:
             # return probabilities vector otherwise (i.e., explicitly binary task or automatic with classes == 2)
             return probabilities[:, 1].squeeze()
+        else:
+            # handle degraded case in which there is only one output class
+            assert len(self.model.classes_) == 1, "In this degraded case there must be one class only"
+            return np.repeat(self.model.classes_, len(probabilities))
 
 
 class LinearRegression(ScikitLearner):

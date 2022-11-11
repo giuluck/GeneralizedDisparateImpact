@@ -8,7 +8,7 @@ import logging
 import time
 
 import tensorflow as tf
-from src.models import KerasWandbLogger
+from src.models import KerasWandbLogger, MLP
 from src.experiments import get
 
 logger = tf.get_logger()
@@ -36,10 +36,10 @@ if __name__ == '__main__':
                     fold=fold,
                     batch=bs,
                     units=hu,
-                    run=f'[{ds.replace(" categorical", "")}]-{hu}-[{bs}]'
+                    run=f'[{ds.replace(" categorical", "")}] - {hu} - [{bs}]'
                 )
-                mdl = exp.get_model(
-                    model='mlp',
+                mdl = MLP(
+                    classification=exp.classification,
                     epochs=500,
                     units=hu,
                     verbose=False,

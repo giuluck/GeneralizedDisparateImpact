@@ -8,12 +8,10 @@ from moving_targets.metrics import DIDI, Metric
 from moving_targets.util.scalers import Scaler
 from src.experiments.experiment import Experiment
 from src.metrics import BinnedDIDI
-from src.models import Model, MT, SBR, MLP
+from src.models import Model
 
 
 class Communities(Experiment):
-    THRESHOLD: float = 0.2
-
     @staticmethod
     def load_data() -> Tuple[pd.DataFrame, np.ndarray]:
         with importlib.resources.path('data', 'communities.csv') as filepath:
@@ -29,25 +27,11 @@ class Communities(Experiment):
         :param metrics:
             The list of task-specific evaluation metrics.
         """
-        super(Communities, self).__init__(excluded=excluded, classification=False, units=[256, 256], metrics=metrics)
-
-    def get_model(self, model: str, **kwargs) -> Model:
-        if model == 'mt':
-            # handle tasks-specific default arguments
-            learner = kwargs.get('learner') or 'lr'
-            metrics = kwargs.get('metrics') or self.metrics
-            return MT(classification=False,
-                      excluded=self.excluded,
-                      thresholds=self.THRESHOLD,
-                      learner=learner,
-                      metrics=metrics,
-                      **kwargs)
-        elif model == 'sbr':
-            return SBR(classification=False, excluded=self.excluded, threshold=self.THRESHOLD, **kwargs)
-        elif model == 'mlp':
-            return MLP(classification=False, **kwargs)
-        else:
-            raise AssertionError(f"Unknown model alias '{model}'")
+        super(Communities, self).__init__(classification=False,
+                                          metrics=metrics,
+                                          excluded=excluded,
+                                          threshold=0.2,
+                                          units=[256, 256])
 
 
 class CommunitiesCategorical(Communities):
@@ -65,10 +49,10 @@ class CommunitiesContinuous(Communities):
             The number of bins to be used in the BinnedDIDI metric.
         """
         metrics = [BinnedDIDI(bins=b, protected='pctBlack', classification=False) for b in bins]
-        super(CommunitiesContinuous, self).__init__(excluded='perCapInc', metrics=metrics)
+        super(CommunitiesContinuous, self).__init__(excluded='pctBlack', metrics=metrics)
 
     def get_model(self, model: str, **kwargs) -> Model:
-        if model == 'mt':
-            # handle tasks-specific default degree for continuous fairness scenarios
+        # handle tasks-specific default degree for continuous fairness scenarios
+        if model .startswith('mt '):
             kwargs['degrees'] = kwargs.get('degrees') or 3
         return super(CommunitiesContinuous, self).get_model(model, **kwargs)

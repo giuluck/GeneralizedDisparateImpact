@@ -217,7 +217,7 @@ class SBR(Model):
                  val_split: float = 0.0,
                  units: List[int] = (128, 128),
                  alpha: Optional[float] = None,
-                 epochs: int = 5000,
+                 epochs: int = 200,
                  verbose: bool = False,
                  callbacks: List[Callback] = ()):
         """
