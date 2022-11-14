@@ -1,13 +1,15 @@
-from typing import Optional, Union, List, Tuple
+from typing import Optional, Union, List, Tuple, Dict, Any
 
 import numpy as np
 import pandas as pd
 import torch
+import wandb
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, GradientBoostingRegressor
-from torch import optim, nn
-from torch.utils.data import DataLoader, Dataset
+from torch import nn
+from torch.utils.data import DataLoader
 
-from moving_targets.learners import RandomForestRegressor
+from moving_targets.learners import RandomForestRegressor, TorchMLP
+from moving_targets.metrics import Metric
 from src.models import Model
 
 
@@ -74,7 +76,7 @@ class GradientBoosting(Model):
         """
 
         super(GradientBoosting, self).__init__(
-            name='rf',
+            name='gb',
             classification=classification,
             n_estimators=n_estimators,
             min_samples_leaf=min_samples_leaf,
@@ -92,31 +94,48 @@ class GradientBoosting(Model):
         return self.model.predict(x)
 
 
-class NeuralNetwork(Model):
-    class _Dataset(Dataset):
-        def __init__(self, x, y):
-            assert len(x) == len(y), f"Data should have the same length, but len(x) = {len(x)} and len(y) = {len(y)} "
-            self.x = torch.tensor(x, dtype=torch.float32)
-            self.y = torch.tensor(np.expand_dims(y, axis=-1), dtype=torch.float32)
+class NeuralNetwork(Model, TorchMLP):
+    class WandbLogger:
+        def __init__(self, fold: Dict[str, Tuple[Any, np.ndarray]], metrics: List[Metric], run: str, **config):
+            super(NeuralNetwork.WandbLogger, self).__init__()
 
-        def __len__(self):
-            return len(self.y)
+            self.fold: Dict[str, Tuple[pd.DataFrame, np.ndarray]] = fold
+            "The evaluation fold."
 
-        def __getitem__(self, idx):
-            return self.x[idx], self.y[idx]
+            self.metrics: List[Metric] = metrics
+            """The evaluation metrics."""
+
+            self.run: str = run
+            """The Weights&Biases run name."""
+
+            self.config: Dict[str, Any] = config
+            """Additional Weights&Biases configuration."""
+
+        def init(self, model):
+            config = self.config.copy()
+            config.update(model.config)
+            wandb.init(project='nci_calibration', entity='giuluck', name=self.run, config=config)
+
+        def log(self, model):
+            log = {}
+            for split, (x, y) in self.fold.items():
+                p = model.model(torch.tensor(np.array(x), dtype=torch.float32)).detach().numpy().squeeze()
+                log.update({f'{split}/{metric.__name__}': metric(x, y, p) for metric in self.metrics})
+            wandb.log(log)
+
+        @staticmethod
+        def close():
+            wandb.finish()
 
     def __init__(self,
-                 input_units: int,
                  classification: bool,
                  validation_split: float = 0.0,
                  hidden_units: List[int] = (128, 128),
                  batch_size: int = 128,
-                 epochs: int = 250,
+                 epochs: int = 200,
+                 logger: Optional[WandbLogger] = None,
                  verbose: bool = False):
         """
-        :param input_units:
-            The number of input units.
-
         :param classification:
             Whether we are dealing with a binary classification or a regression task.
 
@@ -132,12 +151,14 @@ class NeuralNetwork(Model):
         :param epochs:
             The neural network training epochs.
 
+        :param logger:
+            An optional callback for logging the training history on Weights&Biases.
+
         :param verbose:
             The neural network verbosity.
         """
         super(NeuralNetwork, self).__init__(
             name='nn',
-            input_units=input_units,
             classification=classification,
             validation_split=validation_split,
             hidden_units=hidden_units,
@@ -145,67 +166,46 @@ class NeuralNetwork(Model):
             epochs=epochs
         )
 
-        layers = [nn.Linear(in_features=input_units, out_features=hidden_units[0]), nn.ReLU()]
-        for i, h in enumerate(hidden_units[1:]):
-            layers += [nn.Linear(in_features=hidden_units[i - 1], out_features=hidden_units[i]), nn.ReLU()]
-        layers += [nn.Linear(in_features=hidden_units[-1], out_features=1)]
-        layers += [nn.Sigmoid()] if classification else []
+        super(Model, self).__init__(
+            loss=nn.BCELoss() if classification else nn.MSELoss(),
+            activation=nn.Sigmoid() if classification else None,
+            hidden_units=hidden_units,
+            epochs=epochs,
+            validation_split=validation_split,
+            batch_size=batch_size,
+            verbose=verbose,
+            optimizer='Adam',
+            x_scaler=None,
+            y_scaler=None,
+            stats=False
+        )
 
-        self.model: Optional[nn.Module] = nn.Sequential(*layers)
-        """The torch model."""
-
-        self.loss: nn.Module = nn.BCELoss() if classification else nn.MSELoss()
-        """The neural network loss function."""
-
-        self.optimizer: optim.Optimizer = optim.Adam(params=self.model.parameters())
-        """The neural network optimizer."""
-
-        self.epochs: int = epochs
-        """The number of training epochs."""
-
-        self.validation_split: float = validation_split
-        """The validation split for neural network training."""
-
-        self.batch_size: int = batch_size
-        """The batch size for neural network training."""
-
-        self.verbose: bool = verbose
-        """Whether or not to print information during the neural network training."""
-
-    def _print(self, epoch: int, loss: float, batch: Optional[Tuple[int, int]] = None):
-        if not self.verbose:
-            return
-
-        # carriage return to write in the same line
-        print(f'\r', end='')
-        # print the epoch number with trailing spaces on the left to match the maximum epoch
-        print(f'Epoch {epoch:{len(str(self.epochs))}}', end=' ')
-        # print the loss value (either loss for this single batch or for the whole epoch)
-        print(f'- loss = {loss:.4f}', end='')
-        # check whether this is the information of a single batch or of the whole epoch and for the latter case (batch
-        # is None) print a new line, while for the former (batch is a tuple) print the batch number and no new line
-        if batch is None:
-            print()
-        else:
-            batch, batches = batch
-            print(f' (batch {batch:{len(str(batches))}} of {batches})', end='')
+        self.logger: Optional[NeuralNetwork.WandbLogger] = logger
+        """An optional callback for logging the training history on Weights&Biases."""
 
     def _fit(self, x: pd.DataFrame, y: np.ndarray):
-        ds = NeuralNetwork._Dataset(x=np.array(x), y=np.array(y))
-        loader = DataLoader(dataset=ds, batch_size=self.batch_size, shuffle=True)
+        ds = TorchMLP.Dataset(x=np.array(x), y=np.array(y))
+        loader = DataLoader(dataset=ds, batch_size=self.batch_size, shuffle=True, num_workers=0)
         batches = np.ceil(len(ds) / self.batch_size).astype(int)
+        optimizer = self._build_model(input_units=x.shape[1])
         self.model.train()
+        if self.logger is not None:
+            self.logger.init(self)
         for epoch in np.arange(self.epochs) + 1:
             epoch_loss = 0.0
             for batch, (inp, out) in enumerate(loader):
-                self.optimizer.zero_grad()
+                optimizer.zero_grad()
                 pred = self.model(inp)
                 loss = self.loss(pred, out)
                 loss.backward()
-                self.optimizer.step()
+                optimizer.step()
                 epoch_loss += loss.item() * inp.size(0)
-                self._print(epoch=epoch, loss=loss.item(), batch=(batch + 1, batches))
-            self._print(epoch=epoch, loss=epoch_loss / len(ds))
+                self._print(epoch=epoch, info={'loss': loss.item()}, batch=(batch + 1, batches))
+            self._print(epoch=epoch, info={'loss': epoch_loss / len(ds)})
+            if self.logger is not None:
+                self.logger.log(self)
+        if self.logger is not None:
+            self.logger.close()
         self.model.eval()
 
     def _predict(self, x: pd.DataFrame) -> np.ndarray:

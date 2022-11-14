@@ -56,6 +56,6 @@ class AdultContinuous(Adult):
 
     def get_model(self, model: str, **kwargs) -> Model:
         # handle tasks-specific default degree for continuous fairness scenarios
-        if model.startswith('mt '):
+        if model == 'sbr cov' or model.startswith('mt '):
             kwargs['degrees'] = kwargs.get('degrees') or 3
         return super(AdultContinuous, self).get_model(model, **kwargs)

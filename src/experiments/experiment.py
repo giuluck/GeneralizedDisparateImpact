@@ -6,14 +6,15 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
-import tensorflow as tf
+import torch.random
 import wandb
 from sklearn.model_selection import train_test_split, KFold, StratifiedKFold
 
 from moving_targets.metrics import Metric, MSE, R2, CrossEntropy, Accuracy
 from moving_targets.util.typing import Dataset
 from src.metrics import HGR
-from src.models import Model, RandomForest, GradientBoosting, NeuralNetwork, MovingTargets
+from src.models import Model, RandomForest, GradientBoosting, NeuralNetwork, MovingTargets, CovarianceSBR, \
+    HirschfeldGebeleinRenyiSBR
 
 
 class Experiment:
@@ -22,12 +23,6 @@ class Experiment:
 
     ENTITY: str = 'giuluck'
     """The Weights&Biases entity name."""
-
-    EPOCHS: int = 200
-    """The neural network epochs."""
-
-    BATCH_SIZE: int = 128
-    "The neural network batch size."
 
     @staticmethod
     def setup(seed: int):
@@ -38,7 +33,9 @@ class Experiment:
         """
         random.seed(seed)
         np.random.seed(seed)
-        tf.random.set_seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        torch.use_deterministic_algorithms(True)
 
     @staticmethod
     def load_data() -> Tuple[pd.DataFrame, np.ndarray]:
@@ -107,28 +104,45 @@ class Experiment:
         :return:
             The model instance.
         """
-        features = self.data[0].shape[1]
         if model == 'rf':
             return RandomForest(classification=self.classification, **kwargs)
         elif model == 'gb':
             return GradientBoosting(classification=self.classification, **kwargs)
         elif model == 'nn':
             return NeuralNetwork(
-                input_units=features,
                 classification=self.classification,
                 hidden_units=self.units,
-                epochs=self.EPOCHS,
-                batch_size=self.BATCH_SIZE,
+                batch_size=128,
+                epochs=200,
+                **kwargs
+            )
+        elif model == 'sbr hgr':
+            return HirschfeldGebeleinRenyiSBR(
+                excluded=self.excluded,
+                threshold=self.threshold,
+                classification=self.classification,
+                hidden_units=self.units,
+                batch_size=128,
+                epochs=500,
+                **kwargs
+            )
+        elif model == 'sbr cov':
+            return CovarianceSBR(
+                excluded=self.excluded,
+                threshold=self.threshold,
+                classification=self.classification,
+                hidden_units=self.units,
+                batch_size=len(self.data[0]),
+                epochs=500,
                 **kwargs
             )
         elif model.startswith('mt '):
             learner = model[3:]
             if learner == 'nn':
                 kwargs.update({
-                    'epochs': self.EPOCHS,
-                    'batch_size': self.BATCH_SIZE,
-                    'hidden_units': self.units,
-                    'input_units': features
+                    'epochs': 200,
+                    'batch_size': 128,
+                    'hidden_units': self.units
                 })
             return MovingTargets(
                 learner=learner,
@@ -140,7 +154,7 @@ class Experiment:
         else:
             raise AssertionError(f"Unknown model alias '{model}'")
 
-    def get_folds(self, folds: Optional[int] = None, seed: int = 0) -> Union[List[Dataset], Dataset]:
+    def get_folds(self, folds: Optional[int] = None) -> Union[List[Dataset], Dataset]:
         """Gets the data split in folds.
 
         With folds = None returns a dictionary of type {'train': (x, y)}.
@@ -150,9 +164,6 @@ class Experiment:
         :param folds:
             The number of folds for k-fold cross-validation.
 
-        :param seed:
-            The splitting random seed.
-
         :return:
             Either a single tuple, a pair of tuples, or a list of tuples.
         """
@@ -161,11 +172,11 @@ class Experiment:
             return {'train': (x, y)}
         elif folds == 1:
             stratify = y if self.classification else None
-            xtr, xts, ytr, yts = train_test_split(x, y, test_size=0.3, stratify=stratify, random_state=seed)
+            xtr, xts, ytr, yts = train_test_split(x, y, test_size=0.3, stratify=stratify, random_state=self.SEED)
             return {'train': (xtr, ytr), 'test': (xts, yts)}
         else:
             kf = StratifiedKFold if self.classification else KFold
-            idx = kf(n_splits=folds, shuffle=True, random_state=seed).split(x, y)
+            idx = kf(n_splits=folds, shuffle=True, random_state=self.SEED).split(x, y)
             return [{'train': (x.iloc[tr], y[tr]), 'val': (x.iloc[ts], y[ts])} for tr, ts in idx]
 
     def evaluate(self, model: Model, fold: Dataset) -> pd.DataFrame:
@@ -206,7 +217,7 @@ class Experiment:
             The model custom arguments.
         """
         # if there is a single fold, run the experiment with fold index = None, otherwise indicate the correct index
-        folds = self.get_folds(folds=folds, seed=self.SEED)
+        folds = self.get_folds(folds=folds)
         if isinstance(folds, dict):
             x, y = folds['train']
             mdl = self.get_model(model, x=x, y=y, **kwargs)

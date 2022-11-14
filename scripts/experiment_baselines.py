@@ -8,16 +8,13 @@ import time
 
 from src.experiments import get
 
-datasets = {
-    'communities categorical': ['rf', 'gb', 'nn'],
-    'communities continuous': ['rf', 'gb', 'nn'],
-    'adult categorical': ['rf', 'gb', 'nn'],
-    'adult continuous': ['rf', 'gb', 'nn']
-}
+datasets = ['communities categorical', 'communities continuous', 'adult categorical', 'adult continuous']
+
+models = ['sbr cov', 'sbr hgr']
 
 if __name__ == '__main__':
     print('-------------------------------------------------')
-    for dataset, models in datasets.items():
+    for dataset in datasets:
         print(f' * DATASET: {dataset}')
         for i, model in enumerate(models):
             if i != 0:

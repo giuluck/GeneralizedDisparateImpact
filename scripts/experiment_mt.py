@@ -12,13 +12,13 @@ from moving_targets.callbacks import WandBLogger
 from src.experiments import get
 from src.metrics import RegressionWeight
 
-models = ['rf', 'gb', 'nn']
+models = ['nn']
 
 datasets = {
     'communities categorical': [1],
     'communities continuous': [1, 2, 3, 5],
     'adult categorical': [1],
-    'adult continuous': [1, 2, 3, 5]
+    'adult continuous': [1, 2, 3]
 }
 
 if __name__ == '__main__':
@@ -26,10 +26,10 @@ if __name__ == '__main__':
     for model in models:
         for dataset, degrees in datasets.items():
             print(f' * MODEL: {model}, DATASET: {dataset}')
-            for i, dg in enumerate(degrees):
+            for i, degree in enumerate(degrees):
                 if i != 0:
                     print()
-                print(f'    - DEGREE: {dg}')
+                print(f'    - DEGREE: {degree}')
                 exp = get(dataset)
                 folds = exp.get_folds(folds=5)
                 for idx, fold in enumerate(folds):
@@ -40,13 +40,19 @@ if __name__ == '__main__':
                     mdl = exp.get_model(
                         model=f'mt {model}',
                         fold=fold,
-                        degrees=dg,
+                        degrees=degree,
                         metrics=exp.metrics + [RegressionWeight(feature=f, degree=5, name=f) for f in exp.excluded],
                     )
                     assert isinstance(mdl, MovingTargets), f"There has been some errors with retrieved model {mdl}"
-                    run = f'{model} - {dataset} - {dg} ({idx})'
-                    cb = WandBLogger(project='nci_mt', entity='giuluck', run_name=run, fold=idx, **mdl.config)
-                    mdl.add_callback(cb)
+                    mdl.add_callback(WandBLogger(
+                        project='nci_mt',
+                        entity='giuluck',
+                        run_name=f'{model} - {dataset} - {degree} ({idx})',
+                        dataset=dataset,
+                        model=model,
+                        fold=idx,
+                        **mdl.config
+                    ))
                     exp.run_instance(model=mdl, x=x, y=y, fold=fold, index=None, log=None, show=False)
                     print(f' -- elapsed time = {time.time() - start:.2f}s')
             print('-------------------------------------------------')

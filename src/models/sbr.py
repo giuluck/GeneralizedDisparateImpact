@@ -1,295 +1,285 @@
-from typing import List, Dict, Any, Tuple, Optional, Union
+from typing import List, Union, Any
 
 import numpy as np
 import pandas as pd
-import tensorflow as tf
-from tensorflow.python.keras.callbacks import Callback
-from tensorflow.python.keras.layers import Dense
-from tensorflow.python.keras.metrics import Mean
-from tensorflow.python.keras.models import Model as KerasModel
-from tensorflow.python.keras.optimizer_v2.adam import Adam
+import torch
+from torch.autograd import Variable
+from torch.optim import Adam
+from torch.utils.data import DataLoader
 
-from src.models import Model
+from src.metrics import HGR
+from src.models.base import NeuralNetwork
 
 
-class KerasSBR(KerasModel):
+class NeuralSBR(NeuralNetwork):
     def __init__(self,
-                 data: pd.DataFrame,
-                 protected: Union[str, List[str]],
                  classification: bool,
+                 excluded: Union[str, List[str]],
                  threshold: float = 0.0,
-                 units: List[int] = (),
-                 alpha: Optional[float] = None):
+                 validation_split: float = 0.0,
+                 hidden_units: List[int] = (128, 128),
+                 batch_size: int = 128,
+                 epochs: int = 200,
+                 verbose: bool = False):
         """
-        :param data:
-            The input data on which to compute the indicator matrix.
-
-        :param protected:
-            The protected features.
-
         :param classification:
             Whether we are dealing with a binary classification or a regression task.
 
-        :param threshold:
-            The DIDI threshold.
-
-        :param units:
-            The neural network hidden units.
-
-        :param alpha:
-            Either a fixed alpha or None to use the lagrangian dual alpha optimization process.
-        """
-        super(KerasSBR, self).__init__()
-
-        self.threshold: float = threshold
-        """The DIDI threshold."""
-
-        protected = protected if isinstance(protected, list) else [protected]
-        self.protected: List[int] = [i for i, c in enumerate(data.columns) if c in protected]
-        """The indices of the protected features."""
-
-        activation = 'sigmoid' if classification else None
-        self.lrs: List[Dense] = [Dense(u, activation='relu') for u in units] + [Dense(1, activation=activation)]
-        """The list of neural layers."""
-
-        self.alpha = tf.Variable(0., name='alpha') if alpha is None else tf.Variable(alpha, name='alpha')
-        """The alpha value for balancing compiled and regularized loss."""
-
-        self.alpha_optimizer = Adam(learning_rate=1.0) if alpha is None else None
-        """The optimizer of the alpha value that leverages the lagrangian dual technique."""
-
-        self._alpha_tracker = Mean(name='alpha')
-        """The tracker of alpha values during the training process."""
-
-        self._tot_loss_tracker = Mean(name='tot_loss')
-        """The tracker of total loss values during the training process."""
-
-        self._def_loss_tracker = Mean(name='def_loss')
-        """The tracker of default loss values during the training process."""
-
-        self._reg_loss_tracker = Mean(name='reg_loss')
-        """The tracker of regularizer loss values during the training process."""
-
-        self._perc_didi_tracker = Mean(name='perc_didi')
-        """The tracker of percentage didi metric during the training process."""
-
-        self._test_loss_tracker = Mean(name='test_loss')
-        """The tracker of test loss values during the training process."""
-
-        # build the model with the correct input shape
-        tensor = tf.zeros((1, data.shape[1]))
-        self.call(tensor)
-
-    def _absolute_didi(self, x: tf.Tensor, y: tf.Tensor) -> float:
-        """Computes the absolute didi given certain input and target tensors.
-
-        :param x:
-            The input tensor.
-
-        :param y:
-            The output targets.
-
-        :return:
-            The absolute didi.
-        """
-        didi = 0
-        avg = tf.reduce_mean(y)
-        for protected in self.protected:
-            group_mask = x[:, protected]
-            group_avg = tf.reduce_mean(y[group_mask == 1.0])
-            didi += tf.abs(avg - group_avg)
-        return didi
-
-    def _custom_loss(self, x: tf.Tensor, y: tf.Tensor, sign: int = 1) -> Tuple[float, float, float, float]:
-        """Computes the custom losses.
-
-        :param x:
-            The input data.
-
-        :param y:
-            The target data.
-
-        :param sign:
-            Whether to minimize the loss (1) or to maximize it (-1) depending on the training step.
-
-        :return:
-            A tuple of the form (<total_loss>, <default_loss>, <regularizer_loss>, <didi>), where the total loss is
-            computed as: <total_loss> = <sign> * (<default_loss> + <alpha> * <regularizer_loss>)
-        """
-        # obtain the predictions
-        p = self(x, training=True)
-        # compute the default loss
-        def_loss = self.compiled_loss(y, p)
-        # compute the regularization loss
-        perc_didi = self._absolute_didi(x, p) / self._absolute_didi(x, y)
-        reg_loss = tf.maximum(0.0, perc_didi - self.threshold)
-        return sign * (def_loss + self.alpha * reg_loss), def_loss, reg_loss, perc_didi
-
-    def train_step(self, data: Tuple[tf.Tensor, tf.Tensor]) -> Dict[str, float]:
-        """Overrides keras `train_step` method.
-
-        :param data:
-            The (x, y) data batch.
-
-        :return:
-            A dictionary containing the values of <alpha>, <total_loss>, <default_loss>, and <regularization_loss>.
-        """
-        # unpack training data
-        x, y = data
-        nn_vars = self.trainable_variables[:-1]
-        alpha_var = self.trainable_variables[-1:]
-        # first optimization step: network parameters with alpha (last var) excluded -> loss minimization
-        with tf.GradientTape() as tape:
-            tot_loss, def_loss, reg_loss, perc_didi = self._custom_loss(x, y, sign=1)
-            grads = tape.gradient(tot_loss, nn_vars)
-            self.optimizer.apply_gradients(zip(grads, nn_vars))
-        # second optimization step: alpha only -> loss maximization
-        if self.alpha_optimizer is not None:
-            with tf.GradientTape() as tape:
-                tot_loss, def_loss, reg_loss, perc_didi = self._custom_loss(x, y, sign=-1)
-                grads = tape.gradient(tot_loss, alpha_var)
-                self.alpha_optimizer.apply_gradients(zip(grads, alpha_var))
-        # loss tracking
-        self._alpha_tracker.update_state(self.alpha)
-        self._tot_loss_tracker.update_state(abs(tot_loss))
-        self._def_loss_tracker.update_state(def_loss)
-        self._reg_loss_tracker.update_state(reg_loss)
-        self._perc_didi_tracker.update_state(perc_didi)
-        return {
-            'alpha': self._alpha_tracker.result(),
-            'tot_loss': self._tot_loss_tracker.result(),
-            'def_loss': self._def_loss_tracker.result(),
-            'reg_loss': self._reg_loss_tracker.result(),
-            'perc_didi': self._perc_didi_tracker.result()
-        }
-
-    def test_step(self, d: Tuple[tf.Tensor, tf.Tensor]) -> Dict[str, float]:
-        """Overrides keras `test_step` method.
-
-        :param d:
-            The batch, having the form (<input_data>, <ground_truths>).
-
-        :return:
-            A dictionary containing the values of <test_loss>.
-        """
-        x, labels = d
-        loss = self.compiled_loss(labels, self(x, training=False))
-        self._test_loss_tracker.update_state(loss)
-        return {
-            'loss': self._test_loss_tracker.result()
-        }
-
-    def call(self, inputs, training=None, mask=None):
-        """Overrides Keras method.
-
-        :param inputs:
-            The neural network inputs.
-
-        :param training:
-            Overrides Keras parameter.
-
-        :param mask:
-            Overrides Keras parameter.
-        """
-        x = inputs
-        for layer in self.lrs:
-            x = layer(x)
-        return x
-
-    def get_config(self):
-        """Overrides Keras method."""
-        pass
-
-    def _serialize_to_tensors(self):
-        """Overrides Keras method."""
-        pass
-
-    def _restore_from_tensors(self, restored_tensors):
-        """Overrides Keras method."""
-        pass
-
-
-class SBR(Model):
-    def __init__(self,
-                 excluded: Union[str, List[str]],
-                 classification: bool,
-                 threshold: float = 0.0,
-                 val_split: float = 0.0,
-                 units: List[int] = (128, 128),
-                 alpha: Optional[float] = None,
-                 epochs: int = 200,
-                 verbose: bool = False,
-                 callbacks: List[Callback] = ()):
-        """
         :param excluded:
             The features to be excluded.
 
-        :param classification:
-            Whether we are dealing with a binary classification or a regression task.
-
         :param threshold:
-            The DIDI threshold.
+            The exclusion threshold.
 
-        :param val_split:
+        :param validation_split:
             The neural network validation split.
 
-        :param units:
+        :param hidden_units:
             The neural network hidden units.
 
-        :param alpha:
-            Either a fixed alpha or None to use the lagrangian dual alpha optimization process.
+        :param batch_size:
+            The neural network batch size.
 
         :param epochs:
             The neural network training epochs.
 
         :param verbose:
             The neural network verbosity.
-
-        :param callbacks:
-            The neural network callbacks.
         """
-        super(SBR, self).__init__(
-            name='sbr',
+        super(NeuralSBR, self).__init__(
             classification=classification,
-            excluded=excluded,
-            threshold=threshold,
-            val_split=val_split,
-            units=units,
-            alpha=alpha,
+            validation_split=validation_split,
+            hidden_units=hidden_units,
+            batch_size=batch_size,
+            verbose=verbose,
             epochs=epochs,
-            callbacks=callbacks
+            logger=None
         )
 
-        self.net: Optional[KerasSBR] = None
-        """The neural sbr model."""
+        self.excluded: List[Any] = excluded if isinstance(excluded, list) else [excluded]
+        """The features to be excluded."""
 
-        self.net_args: Dict[str, Any] = {
-            'alpha': alpha,
-            'units': units,
-            'protected': excluded,
-            'threshold': threshold,
-            'classification': classification
-        }
-        """Custom arguments to be passed to the 'KerasSBR' constructor."""
+        self.threshold: float = threshold
+        """The exclusion threshold."""
 
-        self.compile_args: Dict[str, Any] = {
-            'loss': 'binary_crossentropy' if classification else 'mse',
-            'optimizer': 'adam'
-        }
-        """Custom arguments to be passed to the 'compile' method."""
+        self.alpha = Variable(torch.Tensor([0.]), requires_grad=True, name='alpha')
+        """The alpha value for balancing compiled and regularized loss."""
 
-        self.fit_args: Dict[str, Any] = {
-            'epochs': epochs,
-            'verbose': verbose,
-            'callbacks': callbacks,
-            'validation_split': val_split
-        }
-        """Custom arguments to be passed to the 'fit' method."""
+        self.alpha_optimizer = Adam(lr=1e-2, params=[self.alpha])
+        """The optimizer of the alpha value that leverages the lagrangian dual technique."""
+
+    def _regularization_loss(self, x: torch.Tensor, y: torch.Tensor, p: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError("Please implement abstract method '_regularization_loss'.")
 
     def _fit(self, x: pd.DataFrame, y: np.ndarray):
-        self.net = KerasSBR(data=x, **self.net_args)
-        self.net.compile(**self.compile_args)
-        self.net.fit(x, y, batch_size=len(x), **self.fit_args)
+        # change feature names with feature indices
+        self.excluded = [i for i, c in enumerate(x.columns) if c in self.excluded]
+        # load data and start the model training
+        ds = NeuralNetwork.Dataset(x=np.array(x), y=np.array(y))
+        loader = DataLoader(dataset=ds, batch_size=self.batch_size, shuffle=True, num_workers=0)
+        batches = np.ceil(len(ds) / self.batch_size).astype(int)
+        optimizer = self._build_model(x.shape[1])
+        self.model.train()
+        for epoch in np.arange(self.epochs) + 1:
+            # default loss, regularization loss, and total loss containers
+            epoch_def, epoch_reg, epoch_tot = 0.0, 0.0, 0.0
+            for batch, (inp, out) in enumerate(loader):
+                # loss minimization step
+                optimizer.zero_grad()
+                pred = self.model(inp)
+                def_loss = self.loss(pred, out)
+                reg_loss = self._regularization_loss(inp, out, pred)
+                tot_loss = def_loss + self.alpha * reg_loss
+                tot_loss.backward()
+                optimizer.step()
+                # alpha maximization step
+                self.alpha_optimizer.zero_grad()
+                pred = self.model(inp)
+                def_loss = self.loss(pred, out)
+                reg_loss = self._regularization_loss(inp, out, pred)
+                tot_loss = -(def_loss + self.alpha * reg_loss)
+                tot_loss.backward()
+                self.alpha_optimizer.step()
+                # update the final losses and print the partial results
+                epoch_def += def_loss.item() * inp.size(0)
+                epoch_reg += reg_loss.item() * inp.size(0)
+                epoch_tot += tot_loss.item() * inp.size(0)
+                self._print(epoch=epoch, batch=(batch + 1, batches), info={
+                    'alpha': self.alpha.item(),
+                    'def_loss': def_loss.item(),
+                    'reg_loss': reg_loss.item(),
+                    'tot_loss': -tot_loss.item()
+                })
+            self._print(epoch=epoch, info={
+                'alpha': self.alpha.item(),
+                'def_loss': epoch_def / len(ds),
+                'reg_loss': epoch_reg / len(ds),
+                'tot_loss': -epoch_tot / len(ds)
+            })
+        self.model.eval()
 
-    def _predict(self, x: pd.DataFrame) -> np.ndarray:
-        return self.net.predict(x)
+
+class CovarianceSBR(NeuralSBR):
+    def __init__(self,
+                 classification: bool,
+                 excluded: Union[str, List[str]],
+                 threshold: float = 0.0,
+                 degrees: int = 1,
+                 gamma: float = 0.1,
+                 validation_split: float = 0.0,
+                 hidden_units: List[int] = (128, 128),
+                 batch_size: int = 128,
+                 epochs: int = 200,
+                 verbose: bool = False):
+        """
+        :param classification:
+            Whether we are dealing with a binary classification or a regression task.
+
+        :param excluded:
+            The features to be excluded.
+
+        :param threshold:
+            The exclusion threshold.
+
+        :param degrees:
+            The kernel degree used for the features to be excluded.
+
+        :param gamma:
+            The weight of the higher orders violations with respect to the first order degree one.
+
+        :param validation_split:
+            The neural network validation split.
+
+        :param hidden_units:
+            The neural network hidden units.
+
+        :param batch_size:
+            The neural network batch size.
+
+        :param epochs:
+            The neural network training epochs.
+
+        :param verbose:
+            The neural network verbosity.
+        """
+        super(CovarianceSBR, self).__init__(
+            excluded=excluded,
+            threshold=threshold,
+            classification=classification,
+            validation_split=validation_split,
+            hidden_units=hidden_units,
+            batch_size=batch_size,
+            verbose=verbose,
+            epochs=epochs,
+        )
+
+        self.degrees: int = degrees
+        """The kernel degrees used for the features to be excluded."""
+
+        self.gamma: float = gamma
+        """The weight of the higher orders violations with respect to the first order degree one."""
+
+        # update name and configuration
+        self.__name__: str = 'sbr cov'
+        self.config['degrees'] = degrees
+        self.config['gamma'] = gamma
+
+    def _regularization_loss(self, x: torch.Tensor, y: torch.Tensor, p: torch.Tensor) -> torch.Tensor:
+        # the total regularization is given by the sum of violations per excluded feature
+        # where the violation of each excluded feature is compute as the sum of violations on the covariances
+        reg_loss = torch.zeros(1)
+        for feature in self.excluded:
+            # instead of using the covariance formulation as in Moving Targets, here we can use the least squares
+            z = x[:, [feature]]
+            z = torch.concatenate([z ** d for d in range(self.degrees + 1)], dim=1)
+            wp, _, _, _ = torch.linalg.lstsq(z, p)
+            wy, _, _, _ = torch.linalg.lstsq(z, y)
+            wp = torch.abs(wp)
+            # we multiply the threshold by the relative weight in order to avoid numerical errors
+            reg_loss += torch.maximum(torch.zeros(1), wp[1] - self.threshold * torch.abs(wy[1]))
+            # the violation of the higher orders is computed as the absolute distance from the slope at degree one
+            reg_loss += self.gamma * torch.sum(torch.abs(wp[2:] - wp[1]))
+        return reg_loss
+
+
+class HirschfeldGebeleinRenyiSBR(NeuralSBR):
+    def __init__(self,
+                 classification: bool,
+                 excluded: Union[str, List[str]],
+                 threshold: float = 0.0,
+                 validation_split: float = 0.0,
+                 hidden_units: List[int] = (128, 128),
+                 batch_size: int = 128,
+                 epochs: int = 200,
+                 verbose: bool = False):
+        """
+        :param classification:
+            Whether we are dealing with a binary classification or a regression task.
+
+        :param excluded:
+            The features to be excluded.
+
+        :param threshold:
+            The exclusion threshold.
+
+        :param validation_split:
+            The neural network validation split.
+
+        :param hidden_units:
+            The neural network hidden units.
+
+        :param batch_size:
+            The neural network batch size.
+
+        :param epochs:
+            The neural network training epochs.
+
+        :param verbose:
+            The neural network verbosity.
+        """
+        super(HirschfeldGebeleinRenyiSBR, self).__init__(
+            excluded=excluded,
+            threshold=threshold,
+            classification=classification,
+            validation_split=validation_split,
+            hidden_units=hidden_units,
+            batch_size=batch_size,
+            verbose=verbose,
+            epochs=epochs,
+        )
+
+        # update name and configuration
+        self.__name__: str = 'sbr hgr'
+
+    def _regularization_loss(self, x: torch.Tensor, y: torch.Tensor, p: torch.Tensor) -> torch.Tensor:
+        # This code has been taken from: https://github.com/criteo-research/continuous-fairness/.
+        #
+        # It computes the \chi^2 divergence between the joint distribution on (x,y) and the product of marginals.
+        # This is know to be the square of an upper-bound on the HGR maximum correlation coefficient.
+        # We compute it here on an empirical and discretized density estimated from the input data.
+        # It returns a numerical value between 0 and infinity, where 0 means independent.
+        #
+        # Differently from https://github.com/criteo-research/continuous-fairness/, compute a relative \chi^2 (as well
+        # as for the other metrics), i.e., instead of constraining the value \chi^2(p, z), we constraint the value
+        # \chi^2(p, z) / \chi^2(y, z). In this way, we should have both more explainable and more comparable results.
+        # Moreover, we also deal with the case in which we have more than one feature by adding all the \chi^2.
+        y, p = y.squeeze(), p.squeeze()
+        reg_loss = torch.zeros(1)
+        for feature in self.excluded:
+            # retrieve the correct feature to exclude
+            z = x[:, feature]
+            # compute the \chi^2 value for the predictions
+            h2d = HGR.joint_2(p, z)
+            marginal_p = h2d.sum(dim=1).unsqueeze(1)
+            marginal_z = h2d.sum(dim=0).unsqueeze(0)
+            q = h2d / (torch.sqrt(marginal_p) * torch.sqrt(marginal_z))
+            chi2_p = (q ** 2).sum(dim=[0, 1]) - 1.0
+            # compute the \chi^2 value for the original targets
+            h2d = HGR.joint_2(y, z)
+            marginal_y = h2d.sum(dim=1).unsqueeze(1)
+            marginal_z = h2d.sum(dim=0).unsqueeze(0)
+            q = h2d / (torch.sqrt(marginal_y) * torch.sqrt(marginal_z))
+            chi2_y = (q ** 2).sum(dim=[0, 1]) - 1.0
+            # constraint the relative \chi^2 by multiplying the threshold to avoid numerical errors
+            reg_loss += torch.maximum(torch.zeros(1), chi2_p - self.threshold * chi2_y)
+        return reg_loss

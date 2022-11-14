@@ -94,7 +94,7 @@ class HGR(Metric):
     """Torch-based implementation of the HGR metric obtained from the official repository of "Fairness-Aware Learning
     for Continuous Attributes and Treatments" (https://github.com/criteo-research/continuous-fairness/)."""
 
-    class _KDE:
+    class KDE:
         """A Gaussian KDE implemented in pytorch for the gradients to flow in pytorch optimization. Keep in mind that
         KDE are not scaling well with the number of dimensions and this implementation is not really optimized..."""
 
@@ -126,13 +126,13 @@ class HGR(Metric):
             return pdf_values
 
     @staticmethod
-    def _joint_2(x, y, density, damping=1e-10):
+    def joint_2(x, y, damping=1e-10):
         # the check on x_std and y_std to be != 0 allows to avoid nan vectors in case of very degraded solutions
         x_std, y_std = x.std(), y.std()
         x = (x - x.mean()) / (1 if x_std == 0.0 else x_std)
         y = (y - y.mean()) / (1 if y_std == 0.0 else y_std)
         data = torch.cat([x.unsqueeze(-1), y.unsqueeze(-1)], -1)
-        joint_density = density(data)
+        joint_density = HGR.KDE(data)
         n_bins = int(min(50, 5. / joint_density.std))
         x_centers = torch.linspace(-2.5, 2.5, n_bins)
         y_centers = torch.linspace(-2.5, 2.5, n_bins)
@@ -142,24 +142,43 @@ class HGR(Metric):
         h2d /= h2d.sum()
         return h2d
 
-    def __init__(self, feature: str, name: str = 'hgr'):
+    def __init__(self, feature: str, percentage: bool = True, name: str = 'hgr'):
         """
         :param feature:
             The name of the feature to inspect.
+
+        :param percentage:
+            Whether the HGR is computed as an absolute or a relative value.
 
         :param name:
             The name of the metric.
         """
         super(HGR, self).__init__(name=name)
 
-        self.feature = feature
+        self.percentage: bool = percentage
+        """Whether the HGR is computed as an absolute or a relative value."""
+
+        self.feature: str = feature
         """The name of the feature to inspect."""
 
     def __call__(self, x, y, p):
-        y = torch.tensor(y, dtype=torch.float)
         p = torch.tensor(p, dtype=torch.float)
-        h2d = self._joint_2(y, p, self._KDE)
-        marginal_x = h2d.sum(dim=1).unsqueeze(1)
-        marginal_y = h2d.sum(dim=0).unsqueeze(0)
-        q = h2d / (torch.sqrt(marginal_x) * torch.sqrt(marginal_y))
-        return torch.svd(q)[1].numpy()[1]
+        z = torch.tensor(x[self.feature].values, dtype=torch.float)
+        h2d = self.joint_2(p, z)
+        marginal_p = h2d.sum(dim=1).unsqueeze(1)
+        marginal_z = h2d.sum(dim=0).unsqueeze(0)
+        q = h2d / (torch.sqrt(marginal_p) * torch.sqrt(marginal_z))
+        hgr_p = torch.svd(q)[1].numpy()[1]
+        if self.percentage:
+            y = torch.tensor(y, dtype=torch.float)
+            h2d = self.joint_2(y, z)
+            marginal_y = h2d.sum(dim=1).unsqueeze(1)
+            marginal_z = h2d.sum(dim=0).unsqueeze(0)
+            q = h2d / (torch.sqrt(marginal_y) * torch.sqrt(marginal_z))
+            hgr_y = torch.svd(q)[1].numpy()[1]
+            if hgr_y == 0.0:
+                return 0.0 if hgr_p == 0.0 else float('inf')
+            else:
+                return hgr_p / hgr_y
+        else:
+            return hgr_p

@@ -7,8 +7,7 @@ from torch import nn
 from moving_targets import MACS
 from moving_targets.callbacks import Callback
 from moving_targets.learners import LinearRegression, LogisticRegression, RandomForestClassifier, \
-    RandomForestRegressor, GradientBoostingClassifier, GradientBoostingRegressor
-from moving_targets.learners.torch_learners import TorchMLP
+    RandomForestRegressor, GradientBoostingClassifier, GradientBoostingRegressor, TorchMLP
 from moving_targets.masters import Master
 from moving_targets.masters.backends import GurobiBackend
 from moving_targets.masters.losses import MSE, HammingDistance
@@ -212,7 +211,7 @@ class MovingTargets(Model):
         elif learner == 'nn':
             lrn = TorchMLP(
                 loss=nn.BCELoss() if classification else nn.MSELoss(),
-                output_activation=nn.Sigmoid() if classification else None,
+                activation=nn.Sigmoid() if classification else None,
                 verbose=False,
                 **learner_kwargs
             )

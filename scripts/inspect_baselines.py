@@ -10,7 +10,7 @@ sns.set_style('whitegrid')
 if __name__ == '__main__':
     exp = get('adult categorical')
     fold = exp.get_folds(folds=1)
-    model = exp.get_model(model='nn', verbose=True)
+    model = exp.get_model(model='sbr hgr', verbose=True)
     print('MODEL CONFIGURATION:')
     for k, v in model.config.items():
         print(f'  > {k} --> {v}')

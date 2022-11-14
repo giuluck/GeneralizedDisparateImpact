@@ -3,6 +3,5 @@ jupyter
 numpy
 pandas
 seaborn
-tensorflow
 torch
 wandb

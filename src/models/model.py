@@ -15,7 +15,7 @@ class Model:
         """
 
         self.__name__: str = name
-        """The model name"""
+        """The model name."""
 
         self.is_fit: bool = False
         """Whether or not the model has been fitted."""
