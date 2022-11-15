@@ -39,9 +39,11 @@ class Adult(Experiment):
 class AdultCategorical(Adult):
     def __init__(self):
         """"""
-        metrics = [DIDI(protected='race', classification=True)]
         categories = ['Amer-Indian-Eskimo', 'Asian-Pac-Islander', 'Black', 'Other', 'White']
-        super(AdultCategorical, self).__init__(excluded=[f'race_{r}' for r in categories], metrics=metrics)
+        super(AdultCategorical, self).__init__(excluded=[f'race_{r}' for r in categories], metrics=[
+            DIDI(protected='race', classification=True, percentage=True, name='rel_didi'),
+            DIDI(protected='race', classification=True, percentage=False, name='abs_didi')
+        ])
 
 
 class AdultContinuous(Adult):
@@ -51,8 +53,10 @@ class AdultContinuous(Adult):
         :param bins:
             The number of bins to be used in the BinnedDIDI metric.
         """
-        metrics = [BinnedDIDI(bins=b, protected='age', classification=True) for b in bins]
-        super(AdultContinuous, self).__init__(excluded='age', metrics=metrics)
+        super(AdultContinuous, self).__init__(excluded='age', metrics=[
+            *[BinnedDIDI(bins=b, protected='age', classification=True, percentage=True, name='rel_didi') for b in bins],
+            *[BinnedDIDI(bins=b, protected='age', classification=True, percentage=False, name='abs_didi') for b in bins]
+        ])
 
     def get_model(self, model: str, **kwargs) -> Model:
         # handle tasks-specific default degree for continuous fairness scenarios

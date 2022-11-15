@@ -12,9 +12,8 @@ from sklearn.model_selection import train_test_split, KFold, StratifiedKFold
 
 from moving_targets.metrics import Metric, MSE, R2, CrossEntropy, Accuracy
 from moving_targets.util.typing import Dataset
-from src.metrics import HGR
-from src.models import Model, RandomForest, GradientBoosting, NeuralNetwork, MovingTargets, CovarianceSBR, \
-    HirschfeldGebeleinRenyiSBR
+from src.metrics import HGR, RegressionWeight
+from src.models import Model, RandomForest, GradientBoosting, NeuralNetwork, MovingTargets, NeuralSBR
 
 
 class Experiment:
@@ -80,9 +79,6 @@ class Experiment:
         self.classification: bool = classification
         """Whether this is a classification or a regression task."""
 
-        self.metrics: List[Metric] = [*task_metrics, *metrics, HGR(feature=excluded)]
-        """The list of evaluation metrics."""
-
         self.excluded: List[str] = excluded if isinstance(excluded, list) else [excluded]
         """The list of features whose causal effect should be excluded."""
 
@@ -91,6 +87,18 @@ class Experiment:
 
         self.units: List[int] = units
         """The neural networks default units."""
+
+        self.metrics: List[Metric] = [
+            *task_metrics,
+            *metrics,
+            HGR(features=excluded, percentage=True, chi2=False, name='rel_hgr'),
+            HGR(features=excluded, percentage=False, chi2=False, name='abs_hgr'),
+            HGR(features=excluded, percentage=True, chi2=True, name='rel_chi2'),
+            HGR(features=excluded, percentage=False, chi2=True, name='abs_chi2'),
+            *[RegressionWeight(feature=f, degree=5, percentage=True, name=f'rel_{f}') for f in self.excluded],
+            *[RegressionWeight(feature=f, degree=5, percentage=False, name=f'abs_{f}') for f in self.excluded]
+        ]
+        """The list of evaluation metrics."""
 
     def get_model(self, model: str, **kwargs) -> Model:
         """Returns a model instance.
@@ -109,48 +117,35 @@ class Experiment:
         elif model == 'gb':
             return GradientBoosting(classification=self.classification, **kwargs)
         elif model == 'nn':
-            return NeuralNetwork(
-                classification=self.classification,
-                hidden_units=self.units,
-                batch_size=128,
-                epochs=200,
-                **kwargs
-            )
+            kwargs['hidden_units'] = kwargs.get('hidden_units') or self.units
+            kwargs['batch_size'] = kwargs.get('batch_size') or 128
+            kwargs['epochs'] = kwargs.get('epochs') or 200
+            return NeuralNetwork(classification=self.classification, **kwargs)
         elif model == 'sbr hgr':
-            return HirschfeldGebeleinRenyiSBR(
-                excluded=self.excluded,
-                threshold=self.threshold,
-                classification=self.classification,
-                hidden_units=self.units,
-                batch_size=128,
-                epochs=500,
-                **kwargs
-            )
+            kwargs['threshold'] = kwargs.get('threshold') or self.threshold
+            kwargs['hidden_units'] = kwargs.get('hidden_units') or self.units
+            kwargs['batch_size'] = kwargs.get('batch_size') or 128
+            kwargs['epochs'] = kwargs.get('epochs') or 200
+            return NeuralSBR(penalty='hgr', excluded=self.excluded, classification=self.classification, **kwargs)
         elif model == 'sbr cov':
-            return CovarianceSBR(
+            kwargs['threshold'] = kwargs.get('threshold') or self.threshold
+            kwargs['hidden_units'] = kwargs.get('hidden_units') or self.units
+            kwargs['epochs'] = kwargs.get('epochs') or 500
+            return NeuralSBR(
+                penalty='cov',
                 excluded=self.excluded,
-                threshold=self.threshold,
                 classification=self.classification,
-                hidden_units=self.units,
                 batch_size=len(self.data[0]),
-                epochs=500,
                 **kwargs
             )
         elif model.startswith('mt '):
             learner = model[3:]
             if learner == 'nn':
-                kwargs.update({
-                    'epochs': 200,
-                    'batch_size': 128,
-                    'hidden_units': self.units
-                })
-            return MovingTargets(
-                learner=learner,
-                classification=self.classification,
-                thresholds=self.threshold,
-                excluded=self.excluded,
-                **kwargs
-            )
+                kwargs['hidden_units'] = kwargs.get('hidden_units') or self.units
+                kwargs['batch_size'] = kwargs.get('batch_size') or len(self.data[0])
+                kwargs['epochs'] = kwargs.get('epochs') or 500
+            kwargs['threshold'] = kwargs.get('threshold') or self.threshold
+            return MovingTargets(learner=learner, classification=self.classification, excluded=self.excluded, **kwargs)
         else:
             raise AssertionError(f"Unknown model alias '{model}'")
 
@@ -194,10 +189,18 @@ class Experiment:
         metrics = {}
         for split, (x, y) in fold.items():
             p = model.predict(x)
-            metrics[split] = {m.__name__: m(x, y, p) for m in self.metrics}
+            results = {}
+            for metric in self.metrics:
+                value = metric(x, y, p)
+                if isinstance(value, (int, float, np.number)):
+                    results[f'{metric.__name__}'] = value
+                elif isinstance(value, dict):
+                    for k, v in value.items():
+                        results[f'{metric.__name__}_{k}'] = v
+            metrics[split] = results
         return pd.DataFrame.from_dict(data=metrics)
 
-    def run(self, model: str, folds: Optional[int], show: bool = True, log: str = 'non_causal_exclusion', **kwargs):
+    def run(self, model: str, folds: Optional[int], show: bool = True, log: Optional[str] = None, **kwargs):
         """Runs the experiment.
 
         :param model:

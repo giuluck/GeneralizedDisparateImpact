@@ -1,5 +1,5 @@
 from math import pi, sqrt
-from typing import Callable
+from typing import Callable, Union, List
 
 import numpy as np
 import pandas as pd
@@ -13,7 +13,11 @@ class RegressionWeight(Metric):
     """Computes the weight(s) of a linear regression model trained uniquely on the given feature after it gets
     processed via a polynomial kernel with the given degree."""
 
-    def __init__(self, feature: str, degree: int = 1, higher_orders: str = 'max', name: str = 'weight'):
+    def __init__(self,
+                 feature: str, degree: int = 1,
+                 higher_orders: str = 'all',
+                 percentage: bool = True,
+                 name: str = 'weight'):
         """
         :param feature:
             The name of the feature to inspect.
@@ -25,6 +29,9 @@ class RegressionWeight(Metric):
             The policy on how to present the weights of higher-order degrees if a kernel > 1 is passed. Options are
             'none' to get just the first-order degree,  'all' to get all the higher-order degrees, or 'max' to get
             just the maximal higher-order degree.
+
+        :param percentage:
+            Whether the weight is computed as an absolute or a relative value.
 
         :param name:
             The name of the metric.
@@ -50,10 +57,20 @@ class RegressionWeight(Metric):
         self.higher_orders: Callable = higher_orders
         """The postprocessing function to return the higher-orders weights."""
 
+        self.percentage: bool = percentage
+        """Whether the HGR is computed as an absolute or a relative value."""
+
     def __call__(self, x, y, p):
         a = self.kernel(x[[self.feature]])
-        w, _, _, _ = np.linalg.lstsq(a, p, rcond=None)
-        return self.higher_orders(np.abs(w))
+        wp, _, _, _ = np.linalg.lstsq(a, p, rcond=None)
+        if self.percentage:
+            wy, _, _, _ = np.linalg.lstsq(a, y, rcond=None)
+            # when wy == 0.0, change wp float('inf') if its value is not null and then change wy to 1.0
+            wp[np.logical_and(wy == 0.0, wp != 0.0)] = float('inf')
+            wy[wy == 0.0] = 1.0
+            return self.higher_orders(np.abs(wp / wy))
+        else:
+            return self.higher_orders(np.abs(wp))
 
 
 class BinnedDIDI(DIDI):
@@ -82,7 +99,9 @@ class BinnedDIDI(DIDI):
             The name of the metric.
         """
         super(BinnedDIDI, self).__init__(classification, protected, percentage, name=f'{name}_{bins}')
-        self.bins = bins
+
+        self.bins: int = bins
+        """The number of bins."""
 
     def __call__(self, x, y, p):
         x = x.copy()
@@ -126,11 +145,10 @@ class HGR(Metric):
             return pdf_values
 
     @staticmethod
-    def joint_2(x, y, damping=1e-10):
-        # the check on x_std and y_std to be != 0 allows to avoid nan vectors in case of very degraded solutions
-        x_std, y_std = x.std(), y.std()
-        x = (x - x.mean()) / (1 if x_std == 0.0 else x_std)
-        y = (y - y.mean()) / (1 if y_std == 0.0 else y_std)
+    def joint_2(x: torch.Tensor, y: torch.Tensor, damping: float = 1e-10, eps: float = 1e-9) -> torch.Tensor:
+        # add an eps value to avoid nan vectors in case of very degraded solutions
+        x = (x - x.mean()) / (x.std(dim=None) + eps)
+        y = (y - y.mean()) / (y.std(dim=None) + eps)
         data = torch.cat([x.unsqueeze(-1), y.unsqueeze(-1)], -1)
         joint_density = HGR.KDE(data)
         n_bins = int(min(50, 5. / joint_density.std))
@@ -142,43 +160,61 @@ class HGR(Metric):
         h2d /= h2d.sum()
         return h2d
 
-    def __init__(self, feature: str, percentage: bool = True, name: str = 'hgr'):
+    @staticmethod
+    def hgr(x: torch.Tensor, y: torch.Tensor, chi2: bool) -> torch.Tensor:
+        h2d = HGR.joint_2(x, y)
+        marginal_x = h2d.sum(dim=1).unsqueeze(1)
+        marginal_y = h2d.sum(dim=0).unsqueeze(0)
+        q = h2d / (torch.sqrt(marginal_x) * torch.sqrt(marginal_y))
+        if chi2:
+            return (q ** 2).sum(dim=[0, 1]) - 1.0
+        else:
+            return torch.linalg.svd(q)[1][1]
+
+    def __init__(self, features: Union[str, List[str]], percentage: bool = True, chi2: bool = False, name: str = 'hgr'):
         """
-        :param feature:
-            The name of the feature to inspect.
+        :param features:
+            The name of the features to inspect.
 
         :param percentage:
             Whether the HGR is computed as an absolute or a relative value.
+
+        :param chi2:
+            Whether to return the chi^2 approximation of the HGR or its actual value.
 
         :param name:
             The name of the metric.
         """
         super(HGR, self).__init__(name=name)
 
+        self.chi2: bool = chi2
+        """Whether to return the chi^2 approximation of the HGR or its actual value."""
+
         self.percentage: bool = percentage
         """Whether the HGR is computed as an absolute or a relative value."""
 
-        self.feature: str = feature
+        self.features: Union[str, List[str]] = features
         """The name of the feature to inspect."""
 
-    def __call__(self, x, y, p):
-        p = torch.tensor(p, dtype=torch.float)
-        z = torch.tensor(x[self.feature].values, dtype=torch.float)
-        h2d = self.joint_2(p, z)
-        marginal_p = h2d.sum(dim=1).unsqueeze(1)
-        marginal_z = h2d.sum(dim=0).unsqueeze(0)
-        q = h2d / (torch.sqrt(marginal_p) * torch.sqrt(marginal_z))
-        hgr_p = torch.svd(q)[1].numpy()[1]
+    def _compute_val(self, z: torch.Tensor, y: torch.Tensor, p: torch.Tensor):
+        hgr_p = HGR.hgr(p, z, chi2=self.chi2).item()
         if self.percentage:
-            y = torch.tensor(y, dtype=torch.float)
-            h2d = self.joint_2(y, z)
-            marginal_y = h2d.sum(dim=1).unsqueeze(1)
-            marginal_z = h2d.sum(dim=0).unsqueeze(0)
-            q = h2d / (torch.sqrt(marginal_y) * torch.sqrt(marginal_z))
-            hgr_y = torch.svd(q)[1].numpy()[1]
+            hgr_y = HGR.hgr(y, z, chi2=self.chi2).item()
             if hgr_y == 0.0:
                 return 0.0 if hgr_p == 0.0 else float('inf')
             else:
                 return hgr_p / hgr_y
         else:
             return hgr_p
+
+    def __call__(self, x, y, p):
+        p = torch.tensor(p, dtype=torch.float)
+        y = torch.tensor(y, dtype=torch.float)
+        if isinstance(self.features, str):
+            z = torch.tensor(x[self.features].values, dtype=torch.float)
+            return self._compute_val(z, y, p)
+        metrics = {}
+        for feature in self.features:
+            z = torch.tensor(x[feature].values, dtype=torch.float)
+            metrics[feature] = self._compute_val(z, y, p)
+        return metrics

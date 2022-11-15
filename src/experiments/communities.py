@@ -37,8 +37,10 @@ class Communities(Experiment):
 class CommunitiesCategorical(Communities):
     def __init__(self):
         """"""
-        metrics = [DIDI(protected='race', classification=False)]
-        super(CommunitiesCategorical, self).__init__(excluded='race', metrics=metrics)
+        super(CommunitiesCategorical, self).__init__(excluded='race', metrics=[
+            DIDI(protected='race', classification=False, percentage=True, name='rel_didi'),
+            DIDI(protected='race', classification=False, percentage=False, name='abs_didi')
+        ])
 
 
 class CommunitiesContinuous(Communities):
@@ -48,8 +50,22 @@ class CommunitiesContinuous(Communities):
         :param bins:
             The number of bins to be used in the BinnedDIDI metric.
         """
-        metrics = [BinnedDIDI(bins=b, protected='pctBlack', classification=False) for b in bins]
-        super(CommunitiesContinuous, self).__init__(excluded='pctBlack', metrics=metrics)
+        super(CommunitiesContinuous, self).__init__(excluded='pctBlack', metrics=[
+            *[BinnedDIDI(
+                bins=b,
+                protected='pctBlack',
+                classification=False,
+                percentage=True,
+                name='rel_didi'
+            ) for b in bins],
+            *[BinnedDIDI(
+                bins=b,
+                protected='pctBlack',
+                classification=False,
+                percentage=False,
+                name='abs_didi'
+            ) for b in bins]
+        ])
 
     def get_model(self, model: str, **kwargs) -> Model:
         # handle tasks-specific default degree for continuous fairness scenarios

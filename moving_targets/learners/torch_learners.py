@@ -103,7 +103,7 @@ class TorchMLP(Learner):
         self.verbose: bool = verbose
         """Whether or not to print information during the neural network training."""
 
-    def _print(self, epoch: int, info: Dict[str, float], batch: Optional[Tuple[int, int]] = None):
+    def _print(self, epoch: int, info: Dict[str, Any], batch: Optional[Tuple[int, int]] = None):
         if not self.verbose:
             return
 
@@ -113,7 +113,7 @@ class TorchMLP(Learner):
         print(f'Epoch {epoch:{len(str(self.epochs))}} -', end='')
         # print the loss value (either loss for this single batch or for the whole epoch)
         for name, value in info.items():
-            print(f' {name} = {value:.4f}', end='')
+            print(f' {name} = {value}', end='')
         # check whether this is the information of a single batch or of the whole epoch and for the latter case (batch
         # is None) print a new line, while for the former (batch is a tuple) print the batch number and no new line
         if batch is None:

@@ -10,7 +10,7 @@ from src.experiments import get
 
 datasets = ['communities categorical', 'communities continuous', 'adult categorical', 'adult continuous']
 
-models = ['sbr cov', 'sbr hgr']
+models = ['rf', 'gb', 'nn', 'mt rf', 'mt gb', 'mt nn', 'sbr cov', 'sbr hgr']
 
 if __name__ == '__main__':
     print('-------------------------------------------------')
