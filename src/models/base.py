@@ -114,7 +114,7 @@ class NeuralNetwork(Model, TorchMLP):
         def init(self, model):
             config = self.config.copy()
             config.update(model.config)
-            wandb.init(project='nci_calibration', entity='giuluck', name=self.run, config=config)
+            wandb.init(project='nci_calibration', entity='shape-constraints', name=self.run, config=config)
 
         def log(self, model):
             log = {}

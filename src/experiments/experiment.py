@@ -20,7 +20,7 @@ class Experiment:
     SEED: int = 0
     """The random seed."""
 
-    ENTITY: str = 'giuluck'
+    ENTITY: str = 'shape-constraints'
     """The Weights&Biases entity name."""
 
     @staticmethod
@@ -144,8 +144,15 @@ class Experiment:
                 kwargs['hidden_units'] = kwargs.get('hidden_units') or self.units
                 kwargs['batch_size'] = kwargs.get('batch_size') or len(self.data[0])
                 kwargs['epochs'] = kwargs.get('epochs') or 500
+            kwargs['iterations'] = kwargs.get('iterations') or 10
             kwargs['threshold'] = kwargs.get('threshold') or self.threshold
-            return MovingTargets(learner=learner, classification=self.classification, excluded=self.excluded, **kwargs)
+            kwargs['metrics'] = kwargs.get('metrics') or self.metrics
+            return MovingTargets(
+                learner=learner,
+                classification=self.classification,
+                excluded=self.excluded,
+                **kwargs
+            )
         else:
             raise AssertionError(f"Unknown model alias '{model}'")
 

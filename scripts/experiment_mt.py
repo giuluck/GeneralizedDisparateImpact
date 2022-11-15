@@ -46,7 +46,7 @@ if __name__ == '__main__':
                     assert isinstance(mdl, MovingTargets), f"There has been some errors with retrieved model {mdl}"
                     mdl.add_callback(WandBLogger(
                         project='nci_mt',
-                        entity='giuluck',
+                        entity='shape-constraints',
                         run_name=f'{model} - {dataset} - {degree} ({idx})',
                         dataset=dataset,
                         model=model,
