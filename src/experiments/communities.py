@@ -13,11 +13,14 @@ from src.models import Model
 
 class Communities(Experiment):
     @staticmethod
-    def load_data() -> Tuple[pd.DataFrame, np.ndarray]:
+    def load_data(scale: bool = True) -> Tuple[pd.DataFrame, np.ndarray]:
         with importlib.resources.path('data', 'communities.csv') as filepath:
             df = pd.read_csv(filepath)
         x, y = df.drop('violentPerPop', axis=1), df['violentPerPop'].values
-        return Scaler('std', race='none').fit_transform(x), Scaler('norm').fit_transform(y)
+        if scale:
+            return Scaler('std', race='none').fit_transform(x), Scaler('norm').fit_transform(y)
+        else:
+            return x, y
 
     def __init__(self, excluded: Union[str, List[str]], metrics: List[Metric]):
         """

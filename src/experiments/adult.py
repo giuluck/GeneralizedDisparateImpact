@@ -14,12 +14,15 @@ from src.models import Model
 class Adult(Experiment):
 
     @staticmethod
-    def load_data() -> Tuple[pd.DataFrame, np.ndarray]:
+    def load_data(scale: bool = True) -> Tuple[pd.DataFrame, np.ndarray]:
         with importlib.resources.path('data', 'adult.csv') as filepath:
             df = pd.read_csv(filepath)
         numerical_features = ['age', 'fnlwgt', 'education-num', 'capital-gain', 'capital-loss', 'hours-per-week']
         x, y = df.drop('income', axis=1), df['income'].astype('category').cat.codes.values
-        return Scaler('none', **{f: 'std' for f in numerical_features}).fit_transform(x), y
+        if scale:
+            return Scaler('none', **{f: 'std' for f in numerical_features}).fit_transform(x), y
+        else:
+            return x, y
 
     def __init__(self, excluded: Union[str, List[str]], metrics: List[Metric]):
         """

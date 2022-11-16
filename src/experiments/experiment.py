@@ -37,8 +37,11 @@ class Experiment:
         torch.use_deterministic_algorithms(True)
 
     @staticmethod
-    def load_data() -> Tuple[pd.DataFrame, np.ndarray]:
+    def load_data(scale: bool = True) -> Tuple[pd.DataFrame, np.ndarray]:
         """Loads the dataset.
+
+        :param scale:
+            Whether or not to scale the data in order to have properly standardized/normalized values.
 
         :return:
             A tuple (x, y) containing the input data and the target vector.
