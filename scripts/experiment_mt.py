@@ -12,7 +12,7 @@ from moving_targets.callbacks import WandBLogger
 from src.experiments import get
 from src.metrics import RegressionWeight
 
-models = ['nn']
+models = ['rf', 'gb', 'nn']
 
 datasets = {
     'communities categorical': [1],

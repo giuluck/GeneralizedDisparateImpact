@@ -142,8 +142,8 @@ class Experiment:
             learner = model[3:]
             if learner == 'nn':
                 kwargs['hidden_units'] = kwargs.get('hidden_units') or self.units
-                kwargs['batch_size'] = kwargs.get('batch_size') or len(self.data[0])
-                kwargs['epochs'] = kwargs.get('epochs') or 500
+                kwargs['batch_size'] = kwargs.get('batch_size') or 128
+                kwargs['epochs'] = kwargs.get('epochs') or 200
             kwargs['iterations'] = kwargs.get('iterations') or 10
             kwargs['thresholds'] = kwargs.get('thresholds') or self.threshold
             kwargs['metrics'] = kwargs.get('metrics') or self.metrics
