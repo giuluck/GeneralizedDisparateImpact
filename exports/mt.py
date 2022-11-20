@@ -5,7 +5,7 @@ import seaborn as sns
 import wandb
 from matplotlib import pyplot as plt
 
-sns.set_context('talk')
+sns.set_context('poster')
 sns.set_style('whitegrid')
 
 # data columns
@@ -69,11 +69,11 @@ def plot(data: pd.DataFrame,
     )
     fig.tight_layout()
     for a in fig.axes.flat:
-        a.set_title(a.title.get_text().replace(f'{row} = ', '').replace(f'{col} = ', ''))
+        a.set_title(a.title.get_text().replace(f'{row} = ', '').replace(f'{col} = ', ''), size=28)
         if ylim is not None:
             a.set_ylim((0, ylim))
     if title is not None:
-        fig.figure.suptitle(f'Percentage Disparate Impact for {title}.', size=20)
+        fig.figure.suptitle(f'Percentage Disparate Impact for {title}')
         fig.figure.subplots_adjust(top=0.85)
     if save_plot:
         plt.savefig(f'{folder}/{name}.png', format='png')
@@ -100,5 +100,5 @@ if __name__ == '__main__':
     df_pred = df[df['Vector'] == 'Predictions']
     df_proj = df[df['Vector'] == 'Projections']
     lim = 1.1 * df['% DIDI'].max().max()
-    plot(data=df_pred, ylim=lim, col='Dataset', name='predictions', title='Model\'s Predictions')
-    plot(data=df_proj, ylim=lim, col='Dataset', name='projections', title='Feasible Projections')
+    plot(data=df_pred, ylim=lim, col='Dataset', name='predictions', title=None)
+    plot(data=df_proj, ylim=lim, col='Dataset', name='projections', title=None)

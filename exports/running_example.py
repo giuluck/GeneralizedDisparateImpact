@@ -16,7 +16,7 @@ class CustomViolinPlotter(seaborn.categorical._ViolinPlotter):
 
 
 seaborn.categorical._ViolinPlotter = CustomViolinPlotter
-sns.set_context('talk')
+sns.set_context('poster')
 sns.set_style('whitegrid')
 
 s = 30
