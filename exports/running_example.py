@@ -23,11 +23,13 @@ s = 30
 linewidth = 2
 continuous = 'cnt'
 categorical = 'ctg'
-scatter_alpha = 0.8
+scatter_alpha = 1.0
 model_alpha = 0.6
 violin_color = 'white'
 scatter_color = 'black'
 model_colors = ['tab:red', 'tab:green', 'tab:blue']
+plot_models = False
+categorical_violin = False
 zorder = 1
 folder = '../temp'
 
@@ -40,12 +42,12 @@ if __name__ == '__main__':
     np.random.seed(0)
     space = np.random.uniform(-np.pi, np.pi, size=100)
     inp = pd.DataFrame.from_dict({'cnt': space, 'ctg': (space > 0.5 * np.pi).astype(int)})
-    out = np.sin(space) + 0.1 * np.square(space) + np.random.normal(scale=0.2, size=100)
+    out = 4 * np.sin(space) + np.square(space) + np.random.normal(size=100)
 
     # RUNNING EXAMPLE WITH CATEGORICAL FEATURE (kernel 1 is enough)
     z = inp['ctg'].values
     data = {'x': z}
-    plt.figure(figsize=(12, 10), tight_layout=True)
+    plt.figure(figsize=(12, 5), tight_layout=True)
     ax = None
     # show two equal plots one for the original targets and one for the processed ones
     for i, name in enumerate(['pre', 'post']):
@@ -56,20 +58,20 @@ if __name__ == '__main__':
         else:
             master = CausalExclusionMaster(classification=False, degrees=1, features='ctg', thresholds=0.0)
             y = master.adjust_targets(x=inp, y=out, p=None)
-            title = 'Processed Targets'
+            title = 'Constrained Targets'
         data[f'y_{name}'] = y
         # create a linspace on the x axis and compute the respective y as predicted by the shadow model
         sx = np.linspace(z.min(), z.max(), num=1000)
         sy = LinearRegression(polynomial=1).fit(z.reshape((-1, 1)), y).predict(sx.reshape((-1, 1)))
-        # plot the scattered data points and the shadow model predictions
-        ax = plt.subplot(2, 2, i + 1, sharex=ax, sharey=ax)
+        # plot either the scattered data points or the violin plots and the shadow model predictions
+        ax = plt.subplot(1, 2, i + 1, sharex=ax, sharey=ax)
         ax.set_title(title)
-        sns.scatterplot(x=z, y=y, s=s, alpha=scatter_alpha, color=scatter_color, zorder=zorder)
-        sns.lineplot(x=sx, y=sy, linewidth=linewidth, color=model_colors[0], label=f'lr')
-        # plot the violin plots and the shadow model predictions
-        ax = plt.subplot(2, 2, i + 3, sharex=ax, sharey=ax)
-        sns.violinplot(x=z, y=y, color=violin_color, zorder=zorder)
-        sns.lineplot(x=sx, y=sy, linewidth=linewidth, alpha=model_alpha, color=model_colors[0], label=f'lr')
+        if categorical_violin:
+            sns.violinplot(x=z, y=y, color=violin_color, zorder=zorder)
+        else:
+            sns.stripplot(x=z, y=y, alpha=scatter_alpha, color=scatter_color, zorder=zorder)
+        if plot_models:
+            sns.lineplot(x=sx, y=sy, linewidth=linewidth, color=model_colors[0], label=f'lr')
     # show plot and save csv data according to boolean variables
     if save_data:
         pd.DataFrame.from_dict(data).to_csv(f'{folder}/categorical.csv', index=False)
@@ -95,7 +97,7 @@ if __name__ == '__main__':
         else:
             master = CausalExclusionMaster(classification=False, degrees=kernel, features='cnt', thresholds=0.0)
             y = master.adjust_targets(x=inp, y=out, p=None)
-            title = f'Kernel = {kernel}'
+            title = f'Constrained Targets up to Order {kernel}'
             name = f'k{kernel}'
         data[f'y_{name}'] = y
         # create a linspace on the x axis and compute the respective y as predicted by the shadow models
@@ -107,9 +109,10 @@ if __name__ == '__main__':
         ax = plt.subplot(2, 2, i + 1, sharex=ax, sharey=ax)
         ax.set_title(title)
         sns.scatterplot(x=z, y=y, s=s, alpha=scatter_alpha, color=scatter_color, zorder=zorder)
-        sns.lineplot(x=sx, y=sy1, linewidth=linewidth, alpha=model_alpha, color=model_colors[0], label=f'lr 1')
-        sns.lineplot(x=sx, y=sy2, linewidth=linewidth, alpha=model_alpha, color=model_colors[1], label=f'lr 2')
-        sns.lineplot(x=sx, y=sy3, linewidth=linewidth, alpha=model_alpha, color=model_colors[2], label=f'lr 3')
+        if plot_models:
+            sns.lineplot(x=sx, y=sy1, linewidth=linewidth, alpha=model_alpha, color=model_colors[0], label=f'lr 1')
+            sns.lineplot(x=sx, y=sy2, linewidth=linewidth, alpha=model_alpha, color=model_colors[1], label=f'lr 2')
+            sns.lineplot(x=sx, y=sy3, linewidth=linewidth, alpha=model_alpha, color=model_colors[2], label=f'lr 3')
     # show plot and save csv data according to boolean variables
     if save_data:
         pd.DataFrame.from_dict(data).to_csv(f'{folder}/continuous.csv', index=False)
