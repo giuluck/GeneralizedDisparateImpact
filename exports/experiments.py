@@ -6,6 +6,7 @@ import wandb
 
 # data columns
 COLUMNS = {
+    'split': 'Split',
     'model': 'Model',
     'dataset': 'Dataset',
     # 'crossentropy': 'CE',
@@ -48,7 +49,7 @@ def bold_extreme_values(series: pd.Series, function: Callable = np.min, format_s
 
 def get_table(data: pd.DataFrame, dataset: str) -> pd.DataFrame:
     data = data[data['Dataset'] == dataset].drop(columns=['Dataset']).dropna(axis=1)
-    data = data.pivot_table(index='Model', columns=['split'])[data.columns.drop(['Model', 'split'])]
+    data = data.pivot_table(index='Model', columns=['Split'])[data.columns.drop(['Model', 'Split'])]
     # convert float values to strings and apply boldness to min/max values
     for col in data.columns.get_level_values(0).unique():
         fn = np.max if col in MAX_METRICS else np.min
@@ -69,7 +70,7 @@ def to_latex(data: pd.DataFrame, name: str, caption: str):
         label=f'table:{name}',
         caption=caption
     )
-    latex = latex.replace('split', '')
+    latex = latex.replace('Split', '')
     latex = latex.replace('Model ' + '&  ' * len(data.columns) + '\\\\\n', '')
     with open(f'{folder}/{name}.tex', 'w') as f:
         f.write(latex)
@@ -91,7 +92,7 @@ if __name__ == '__main__':
     vl['split'] = 'val'
     df = pd.concat([tr, vl]).reset_index(drop=True)
     # change columns names and data types accordingly
-    df = df[list(COLUMNS.keys()) + ['split']].rename(columns=COLUMNS)
+    df = df[COLUMNS.keys()].rename(columns=COLUMNS)
     df['Dataset'] = pd.Categorical(df['Dataset'], categories=DATASET_ORDERING, ordered=True)
     df['Model'] = pd.Categorical(df['Model'].map(str.upper), categories=MODELS_ORDERING, ordered=True)
     df = df.sort_values(['Dataset', 'Model']).reset_index(drop=True)

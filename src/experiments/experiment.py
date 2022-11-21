@@ -98,8 +98,8 @@ class Experiment:
             HGR(features=excluded, percentage=False, chi2=False, name='abs_hgr'),
             HGR(features=excluded, percentage=True, chi2=True, name='rel_chi2'),
             HGR(features=excluded, percentage=False, chi2=True, name='abs_chi2'),
-            *[RegressionWeight(feature=f, degree=5, percentage=True, name=f'rel_{f}') for f in self.excluded],
-            *[RegressionWeight(feature=f, degree=5, percentage=False, name=f'abs_{f}') for f in self.excluded]
+            *[RegressionWeight(feature=f, degree=3, percentage=True, name=f'rel_{f}') for f in self.excluded],
+            *[RegressionWeight(feature=f, degree=3, percentage=False, name=f'abs_{f}') for f in self.excluded]
         ]
         """The list of evaluation metrics."""
 

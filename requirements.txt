@@ -2,6 +2,7 @@ gurobipy
 jupyter
 numpy
 pandas
+scikit-learn
 seaborn
 torch
 wandb

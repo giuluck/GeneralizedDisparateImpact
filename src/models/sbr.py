@@ -86,6 +86,9 @@ class NeuralSBR(NeuralNetwork):
         self.config['excluded'] = excluded
         self.config['threshold'] = threshold
 
+        self.classification: bool = classification
+        """Whether we are dealing with a binary classification or a regression task."""
+
         self.excluded: List[Any] = excluded if isinstance(excluded, list) else [excluded]
         """The features to be excluded."""
 
@@ -118,13 +121,9 @@ class NeuralSBR(NeuralNetwork):
             wp, _, _, _ = torch.linalg.lstsq(z, p, driver='gelsd')
             wy, _, _, _ = torch.linalg.lstsq(z, y, driver='gelsd')
             # we multiply the threshold by the relative weight in order to avoid numerical errors
-            reg_vector += [torch.maximum(torch.zeros(1), wp[1] - self.threshold * torch.abs(wy[1]))]
-            # the violation of the higher orders is computed as the absolute distance from the slope at degree one
-            # in order to reduce numerical errors, we compute the penalty up to a relative threshold EPS, i.e., we want:
-            #   | w[d] - w[1] | / w[1] <= eps --> |w[d] - w[1]| <= w[1] * eps
-            # from which we compute the penalty as:
-            #   max(0, |w[d] - w[1]| - w[1] * eps)
-            reg_vector += [torch.maximum(torch.zeros(1), torch.abs(wp[2:, 0] - wp[1]) - wp[1] * self.EPS)]
+            reg_vector += [torch.maximum(torch.zeros(1), torch.abs(wp[1]) - self.threshold * torch.abs(wy[1]))]
+            # the violation of the higher orders is computed as the absolute value of the respective weight
+            reg_vector += [torch.maximum(torch.zeros(1), torch.abs(wp[2:, 0]) - self.EPS)]
         # finally, we concatenate all the values to obtain a constraint vector
         return torch.concatenate(reg_vector)
 

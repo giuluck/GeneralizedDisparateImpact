@@ -1,7 +1,7 @@
 import seaborn as sns
 
 from src.experiments import get
-from src.metrics import RegressionWeight
+from src.metrics import RegressionWeight, BinnedDIDI
 
 sns.set_context('notebook')
 sns.set_style('whitegrid')
@@ -15,9 +15,8 @@ if __name__ == '__main__':
         fold=fold,
         degrees=degrees,
         iterations=3,
-        metrics=[RegressionWeight(feature=f, degree=5, percentage=True, name=f'5_{f}') for f in exp.excluded] +
-                [RegressionWeight(feature=f, degree=3, percentage=True, name=f'3_{f}') for f in exp.excluded],
-        history=dict(features=None, orient_rows=True, excluded=['train/*', 'test/*']),
+        metrics=[m for m in exp.metrics if isinstance(m, BinnedDIDI) or isinstance(m, RegressionWeight)],
+        history=dict(features=None, orient_rows=True, excluded=['predictions/*', 'train/*', 'test/*']),
         verbose=True
     )
     print('MODEL CONFIGURATION:')
