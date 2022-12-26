@@ -12,6 +12,8 @@ from src.models import Model
 
 
 class Communities(Experiment):
+    classification = False
+
     @staticmethod
     def load_data(scale: bool = True) -> Tuple[pd.DataFrame, np.ndarray]:
         with importlib.resources.path('data', 'communities.csv') as filepath:
@@ -30,8 +32,7 @@ class Communities(Experiment):
         :param metrics:
             The list of task-specific evaluation metrics.
         """
-        super(Communities, self).__init__(classification=False,
-                                          metrics=metrics,
+        super(Communities, self).__init__(metrics=metrics,
                                           excluded=excluded,
                                           threshold=0.2,
                                           units=[256, 256])
@@ -41,8 +42,8 @@ class CommunitiesCategorical(Communities):
     def __init__(self):
         """"""
         super(CommunitiesCategorical, self).__init__(excluded='race', metrics=[
-            DIDI(protected='race', classification=False, percentage=True, name='rel_didi'),
-            DIDI(protected='race', classification=False, percentage=False, name='abs_didi')
+            DIDI(protected='race', classification=self.classification, percentage=True, name='rel_didi'),
+            DIDI(protected='race', classification=self.classification, percentage=False, name='abs_didi')
         ])
 
 
@@ -57,14 +58,14 @@ class CommunitiesContinuous(Communities):
             *[BinnedDIDI(
                 bins=b,
                 protected='pctBlack',
-                classification=False,
+                classification=self.classification,
                 percentage=True,
                 name='rel_didi'
             ) for b in bins],
             *[BinnedDIDI(
                 bins=b,
                 protected='pctBlack',
-                classification=False,
+                classification=self.classification,
                 percentage=False,
                 name='abs_didi'
             ) for b in bins]

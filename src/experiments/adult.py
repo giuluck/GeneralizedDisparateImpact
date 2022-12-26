@@ -12,6 +12,7 @@ from src.models import Model
 
 
 class Adult(Experiment):
+    classification = True
 
     @staticmethod
     def load_data(scale: bool = True) -> Tuple[pd.DataFrame, np.ndarray]:
@@ -32,8 +33,7 @@ class Adult(Experiment):
         :param metrics:
             The list of task-specific evaluation metrics.
         """
-        super(Adult, self).__init__(classification=True,
-                                    metrics=metrics,
+        super(Adult, self).__init__(metrics=metrics,
                                     excluded=excluded,
                                     threshold=0.2,
                                     units=[32, 32, 32])
@@ -44,8 +44,8 @@ class AdultCategorical(Adult):
         """"""
         categories = ['Amer-Indian-Eskimo', 'Asian-Pac-Islander', 'Black', 'Other', 'White']
         super(AdultCategorical, self).__init__(excluded=[f'race_{r}' for r in categories], metrics=[
-            DIDI(protected='race', classification=True, percentage=True, name='rel_didi'),
-            DIDI(protected='race', classification=True, percentage=False, name='abs_didi')
+            DIDI(protected='race', classification=self.classification, percentage=True, name='rel_didi'),
+            DIDI(protected='race', classification=self.classification, percentage=False, name='abs_didi')
         ])
 
 
@@ -57,8 +57,20 @@ class AdultContinuous(Adult):
             The number of bins to be used in the BinnedDIDI metric.
         """
         super(AdultContinuous, self).__init__(excluded='age', metrics=[
-            *[BinnedDIDI(bins=b, protected='age', classification=True, percentage=True, name='rel_didi') for b in bins],
-            *[BinnedDIDI(bins=b, protected='age', classification=True, percentage=False, name='abs_didi') for b in bins]
+            *[BinnedDIDI(
+                bins=b,
+                protected='age',
+                classification=self.classification,
+                percentage=True,
+                name='rel_didi'
+            ) for b in bins],
+            *[BinnedDIDI(
+                bins=b,
+                protected='age',
+                classification=self.classification,
+                percentage=False,
+                name='abs_didi'
+            ) for b in bins]
         ])
 
     def get_model(self, model: str, **kwargs) -> Model:

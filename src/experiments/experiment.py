@@ -23,6 +23,9 @@ class Experiment:
     ENTITY: str = 'shape-constraints'
     """The Weights&Biases entity name."""
 
+    classification: bool
+    """Whether this is a classification or a regression task."""
+
     @staticmethod
     def setup(seed: int):
         """Sets the random seed of the experiment.
@@ -49,15 +52,11 @@ class Experiment:
         raise NotImplementedError("please implement static method 'load_data'")
 
     def __init__(self,
-                 classification: bool,
                  metrics: List[Metric],
                  excluded: Union[str, List[str]],
                  threshold: float,
                  units: List[int]):
         """
-        :param classification:
-            Whether this is a classification or a regression task.
-
         :param metrics:
             The list of task-specific evaluation metrics.
 
@@ -71,16 +70,13 @@ class Experiment:
             The neural networks default units.
         """
 
-        task_metrics = [Accuracy(), CrossEntropy()] if classification else [R2(), MSE()]
+        task_metrics = [Accuracy(), CrossEntropy()] if self.classification else [R2(), MSE()]
 
         self.__name__: str = ' '.join(re.split('(?=[A-Z])', self.__class__.__name__)).lower().strip(' ')
         """The dataset name."""
 
         self.data: Tuple[pd.DataFrame, np.ndarray] = self.load_data()
         """The tuple (x, y) containing the input data and the target vector."""
-
-        self.classification: bool = classification
-        """Whether this is a classification or a regression task."""
 
         self.excluded: List[str] = excluded if isinstance(excluded, list) else [excluded]
         """The list of features whose causal effect should be excluded."""
@@ -147,7 +143,7 @@ class Experiment:
                 kwargs['hidden_units'] = kwargs.get('hidden_units') or self.units
                 kwargs['batch_size'] = kwargs.get('batch_size') or 128
                 kwargs['epochs'] = kwargs.get('epochs') or 200
-            kwargs['iterations'] = kwargs.get('iterations') or 10
+            kwargs['iterations'] = kwargs['iterations'] if kwargs.get('iterations') is not None else 10
             kwargs['thresholds'] = kwargs.get('thresholds') or self.threshold
             kwargs['metrics'] = kwargs.get('metrics') or self.metrics
             return MovingTargets(

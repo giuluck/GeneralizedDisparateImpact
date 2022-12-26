@@ -60,6 +60,12 @@ class CausalExclusionMaster(Master):
             assert not isinstance(thresholds, list), "If features is a single value, thresholds cannot be a list"
             features, degrees, thresholds = [features], [degrees], [thresholds]
 
+        # for binary classification tasks we have that DIDI_c = 2 * DIDI_r
+        # if we constraint to relative thresholds this does not affect anything since the scaling factor disappears
+        # otherwise, we need to constraint to half of the threshold since we will consider the task as a regression one
+        if classification and not relative_thresholds:
+            thresholds = [0.5 * t for t in thresholds]
+
         self.features: Dict[str, (float, int)] = {f: (t, d) for f, t, d in zip(features, thresholds, degrees)}
         """The list of features to exclude with the respective exclusion threshold and kernel degree."""
 
@@ -79,21 +85,22 @@ class CausalExclusionMaster(Master):
         self.vtype: str = vtype
         """The model variables vtypes."""
 
-        super().__init__(backend=GurobiBackend(time_limit=30),
+        super().__init__(backend=GurobiBackend(time_limit=30, verbose=True),
                          loss=HammingDistance() if classification else MSE(),
                          alpha=Harmonic(1.0))
 
-    def build(self,
-              x,
-              y: np.ndarray,
-              p: np.ndarray) -> np.ndarray:
+    def build(self, x, y: np.ndarray, p: np.ndarray) -> np.ndarray:
+        def _cov(val: np.ndarray, var: np.ndarray) -> Any:
+            # optimized covariance formulation since one of the two vectors is a standard array of floating point values
+            return self.backend.mean(val * var) - val.mean() * self.backend.mean(var)
+
         assert y.ndim == 1, f"Target vector must be one-dimensional, got shape {y.shape}"
         v = self.backend.add_variables(len(y), vtype=self.vtype, lb=self.lb, ub=self.ub, name='y')
         for feature, (threshold, degree) in self.features.items():
             # retrieve the column vector of the feature to exclude
             z = x[feature].values
             # compute the first-order slope of the shadow linear regressor and constraint it wrt the threshold
-            cov_zy = self.backend.mean(z * v) - z.mean() * self.backend.mean(v)
+            cov_zy = _cov(z, v)
             var_z = np.var(z)
             # if relative thresholds are used, we need to compute a "relative" theta which is obtained by dividing
             # theta for the respective value it has on the training data, i.e.:
@@ -120,7 +127,8 @@ class CausalExclusionMaster(Master):
             for d in np.arange(1, degree) + 1:
                 zd = z ** d
                 cov_zdz = np.cov(zd, z, bias=True)[0, 1]
-                cov_zdy = self.backend.mean(zd * v) - zd.mean() * self.backend.mean(v)
+                # cov_zdy = self.backend.mean(zd * v) - zd.mean() * self.backend.mean(v)
+                cov_zdy = _cov(zd, v)
                 # instead of forcing:
                 #   cov(z, y) / var(z) = theta_1 == theta_d = cov(z^d, y) / cov(z^d, z)
                 # we use the equivalent constraint:
