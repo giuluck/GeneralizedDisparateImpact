@@ -1,6 +1,6 @@
 """Constraints Metrics."""
 
-from typing import Optional, Callable, List, Union, Dict
+from typing import Optional, Callable, List, Union
 
 import numpy as np
 import pandas as pd

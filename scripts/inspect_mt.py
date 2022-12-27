@@ -7,9 +7,10 @@ from matplotlib import pyplot as plt
 
 from moving_targets import MACS
 from moving_targets.callbacks import Callback
+from moving_targets.metrics import DIDI
 from moving_targets.util.typing import Dataset
 from src.experiments import get
-from src.metrics import RegressionWeight, BinnedDIDI
+from src.metrics import RegressionWeight
 from src.models import MovingTargets
 
 sns.set_context('notebook')
@@ -17,10 +18,10 @@ sns.set_style('whitegrid')
 
 
 class DistributionCallback(Callback):
-    def __init__(self, feature, classes=True, predictions=True):
+    def __init__(self, feature, classification=True, predictions=True):
         super(DistributionCallback, self).__init__()
         self.feature = feature
-        self.classes = classes
+        self.classification = classification
         self.predictions = predictions
         self.iterations = []
         self.data = None
@@ -32,10 +33,10 @@ class DistributionCallback(Callback):
         self.iterations.append(macs.iteration)
 
     def on_training_end(self, macs, x, y, p, val_data):
-        self.data[f'pred_{macs.iteration}'] = p.round() if self.classes else p
+        self.data[f'pred_{macs.iteration}'] = p
 
     def on_adjustment_end(self, macs, x, y, z, val_data):
-        self.data[f'adj_{macs.iteration}'] = z.round() if self.classes else z
+        self.data[f'adj_{macs.iteration}'] = z
 
     def on_process_end(self, macs: MACS, x: pd.DataFrame, y: np.ndarray, val_data: Optional[Dataset]):
         plt.figure(figsize=(16, 9), tight_layout=True)
@@ -58,7 +59,8 @@ class DistributionCallback(Callback):
             )
             weights = []
             for d in [1, 2, 3, 4]:
-                w = RegressionWeight(self.feature, degree=d).__call__(self.data, self.data['y'], self.data[column])
+                rw = RegressionWeight(self.feature, classification=self.classification, degree=d)
+                w = rw(self.data, self.data['y'], self.data[column])
                 weights.append([round(w, 2)] if d == 1 else [round(wi, 2) for wi in w.values()])
                 sns.regplot(self.data, x=self.feature, y=column, order=d, ci=None, scatter=False, label=f'lr {d}')
             ax.set(title=' - '.join([str(ws) for ws in weights]), xlabel='', ylabel='')
@@ -70,20 +72,22 @@ class DistributionCallback(Callback):
 if __name__ == '__main__':
     exp = get('adult continuous')
     fold = exp.get_folds(folds=1)
-    degrees = 1 if 'categorical' in exp.__name__ else 3
+    degrees = 1 if 'categorical' in exp.__name__ else 5
     model = exp.get_model(
         model='mt rf',
         fold=fold,
         degrees=degrees,
         iterations=10,
-        metrics=[m for m in exp.metrics if isinstance(m, BinnedDIDI) or isinstance(m, RegressionWeight)],
-        history=dict(features=None, orient_rows=True, excluded=['predictions/*', 'train/*', 'test/*']),
+        # metrics=[m for m in exp.metrics if isinstance(m, DIDI) or isinstance(m, RegressionWeight)],
+        # metrics=[m for m in exp.metrics if isinstance(m, DIDI)],
+        # history=dict(features=None, orient_rows=True, excluded=['predictions/*', 'train/*', 'test/*']),
+        history=dict(features=None, orient_rows=True, excluded=['predictions/*', 'adjusted/*']),
         verbose=1
     )
     assert isinstance(model, MovingTargets), f"Model should be MovingTargets, got '{type(model)}'"
-    for f in exp.excluded:
-        model.add_callback(callback=DistributionCallback(feature=f, classes=exp.classification, predictions=False))
-        # model.add_callback(callback=DistributionCallback(feature=f, classes=exp.classification, predictions=True))
+    # for f in exp.excluded:
+    #     model.add_callback(callback=DistributionCallback(feature=f, classes=exp.classification, predictions=False))
+    #     model.add_callback(callback=DistributionCallback(feature=f, classes=exp.classification, predictions=True))
     print('MODEL CONFIGURATION:')
     print(f'  > model: {model.__name__}')
     print(f'  > dataset: {exp.__name__}')

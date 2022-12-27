@@ -7,6 +7,7 @@ import torch
 from sklearn.preprocessing import PolynomialFeatures
 
 from moving_targets.metrics import Metric, DIDI
+from moving_targets.util import probabilities
 
 
 class RegressionWeight(Metric):
@@ -14,13 +15,18 @@ class RegressionWeight(Metric):
     processed via a polynomial kernel with the given degree."""
 
     def __init__(self,
-                 feature: str, degree: int = 1,
+                 feature: str,
+                 classification: bool,
+                 degree: int = 1,
                  higher_orders: str = 'all',
                  percentage: bool = True,
                  name: str = 'weight'):
         """
         :param feature:
             The name of the feature to inspect.
+
+        :param classification:
+            Whether this is for a classification or a regression task (in the first scenario, binarize the predictions).
 
         :param degree:
             The degree of the polynomial kernel.
@@ -48,8 +54,11 @@ class RegressionWeight(Metric):
         else:
             raise AssertionError(f"Unknown higher orders option '{higher_orders}'")
 
-        self.feature = feature
+        self.feature: str = feature
         """The name of the feature to inspect."""
+
+        self.classification: bool = classification
+        """Whether this is for a classification or a regression task."""
 
         self.kernel: Callable = PolynomialFeatures(degree=degree, include_bias=True).fit_transform
         """The kernel function to transform each constrained feature."""
@@ -62,6 +71,7 @@ class RegressionWeight(Metric):
 
     def __call__(self, x, y, p):
         a = self.kernel(x[[self.feature]])
+        p = probabilities.get_classes(p) if self.classification else p
         wp, _, _, _ = np.linalg.lstsq(a, p, rcond=None)
         if self.percentage:
             wy, _, _, _ = np.linalg.lstsq(a, y, rcond=None)

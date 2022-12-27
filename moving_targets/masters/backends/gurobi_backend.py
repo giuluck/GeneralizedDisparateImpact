@@ -1,26 +1,17 @@
 from typing import Any, Union, List, Optional, Dict
 
 import numpy as np
+from gurobipy import Env, Model, GRB, Var, GurobiError
 
 from moving_targets.masters.backends import Backend
-from moving_targets.util.errors import MissingDependencyError, BackendError
+from moving_targets.util.errors import BackendError
 
 
 class GurobiBackend(Backend):
     """`Backend` implementation for the Gurobi Solver."""
 
-    def __init__(self,
-                 time_limit: Optional[float] = None,
-                 solution_limit: Optional[float] = None,
-                 verbose: bool = False,
-                 **solver_args):
+    def __init__(self, verbose: bool = False, **solver_args):
         """
-        :param time_limit:
-            The solver time limit.
-
-        :param solution_limit:
-            The solver solution limit.
-
         :param verbose:
             Whether or not to print information during the optimization process.
 
@@ -28,13 +19,6 @@ class GurobiBackend(Backend):
             Parameters of the solver to be set via the `model.SetParam()` function.
         """
         super(GurobiBackend, self).__init__()
-
-        try:
-            import gurobipy
-            self._gp = gurobipy
-            """The lazily imported gurobipy instance."""
-        except ModuleNotFoundError:
-            raise MissingDependencyError(package='gurobipy')
 
         self.verbose: bool = verbose
         """Whether or not to print information during the optimization process."""
@@ -45,18 +29,11 @@ class GurobiBackend(Backend):
         self._env: Optional = None
         """The gurobi environment instance."""
 
-        if time_limit is not None and 'TimeLimit' not in self.solver_args:
-            assert time_limit > 0, f"the time limit must be positive, got {time_limit}"
-            self.solver_args['TimeLimit'] = time_limit
-        if solution_limit is not None and 'SolutionLimit' not in self.solver_args:
-            assert solution_limit > 0, f"the solution limit must be positive, got {solution_limit}"
-            self.solver_args['SolutionLimit'] = solution_limit
-
     def _build_model(self) -> Any:
-        self._env = self._gp.Env(empty=True)
+        self._env = Env(empty=True)
         self._env.setParam('OutputFlag', self.verbose)
         self._env.start()
-        model = self._gp.Model(env=self._env, name='model')
+        model = Model(env=self._env, name='model')
         for param, value in self.solver_args.items():
             model.setParam(param, value)
         return model
@@ -72,36 +49,36 @@ class GurobiBackend(Backend):
         super(GurobiBackend, self).clear()
 
     def minimize(self, cost) -> Any:
-        self.model.setObjective(cost, self._gp.GRB.MINIMIZE)
+        self.model.setObjective(cost, GRB.MINIMIZE)
         return self
 
     def maximize(self, cost) -> Any:
-        self.model.setObjective(cost, self._gp.GRB.MAXIMIZE)
+        self.model.setObjective(cost, GRB.MAXIMIZE)
         return self
 
     def get_objective(self) -> float:
         return self.solution.objVal
 
     def get_values(self, expressions: np.ndarray) -> np.ndarray:
-        values = [v.x if isinstance(v, self._gp.Var) else v.getValue() for v in expressions.flatten()]
+        values = [v.x if isinstance(v, Var) else v.getValue() for v in expressions.flatten()]
         return np.reshape(values, expressions.shape)
 
     def add_variable(self, vtype: str, lb: float, ub: float, name: Optional[str] = None) -> Any:
-        if not hasattr(self._gp.GRB, vtype.upper()):
+        if not hasattr(GRB, vtype.upper()):
             raise BackendError(unsupported=f"vtype '{vtype}'")
         # addVar does not accept name=None as parameter
         kwargs = dict() if name is None else dict(name=name)
-        var = self.model.addVar(vtype=getattr(self._gp.GRB, vtype.upper()), lb=lb, ub=ub, **kwargs)
+        var = self.model.addVar(vtype=getattr(GRB, vtype.upper()), lb=lb, ub=ub, **kwargs)
         return var
 
     def add_variables(self, *keys: int, vtype: str, lb: float, ub: float, name: Optional[str] = None) -> np.ndarray:
         if len(keys) == 0:
             # if no keys are passed, builds a single variable then reshape it into a zero-dimensional numpy array
             var = self.add_variable(vtype=vtype, lb=lb, ub=ub, name=name)
-        elif not hasattr(self._gp.GRB, vtype.upper()):
+        elif not hasattr(GRB, vtype.upper()):
             raise BackendError(unsupported=f"vtype '{vtype}'")
         else:
-            vtype = getattr(self._gp.GRB, vtype.upper())
+            vtype = getattr(GRB, vtype.upper())
             var = self.model.addVars(*keys, vtype=vtype, lb=lb, ub=ub, name=name).values()
         return np.array(var).reshape(keys)
 
@@ -185,7 +162,7 @@ class GurobiBackend(Backend):
     def divide(self, a, b):
         try:
             return super(GurobiBackend, self).divide(a, b)
-        except self._gp.GurobiError:
+        except GurobiError:
             # gurobipy.GurobiError: Divisor must be a constant
             # in case the divisor is not an array of constants, we handle the case by adding N auxiliary variables z_i
             # so that a_i / b_i = z_i --> a_i = z_i * b_i

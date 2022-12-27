@@ -12,6 +12,7 @@ from src.models import Model
 
 
 class Adult(Experiment):
+    # TODO: test classification = False
     classification = True
 
     @staticmethod
@@ -42,10 +43,15 @@ class Adult(Experiment):
 class AdultCategorical(Adult):
     def __init__(self):
         """"""
-        categories = ['Amer-Indian-Eskimo', 'Asian-Pac-Islander', 'Black', 'Other', 'White']
-        super(AdultCategorical, self).__init__(excluded=[f'race_{r}' for r in categories], metrics=[
-            DIDI(protected='race', classification=self.classification, percentage=True, name='rel_didi'),
-            DIDI(protected='race', classification=self.classification, percentage=False, name='abs_didi')
+        # TODO: revert on multi-class protected attribute?
+        # categories = ['Amer-Indian-Eskimo', 'Asian-Pac-Islander', 'Black', 'Other', 'White']
+        # super(AdultCategorical, self).__init__(excluded=[f'race_{r}' for r in categories], metrics=[
+        #     DIDI(protected='race', classification=self.classification, percentage=True, name='rel_didi'),
+        #     DIDI(protected='race', classification=self.classification, percentage=False, name='abs_didi')
+        # ])
+        super(AdultCategorical, self).__init__(excluded='sex', metrics=[
+            DIDI(protected='sex', classification=self.classification, percentage=True, name='rel_didi'),
+            DIDI(protected='sex', classification=self.classification, percentage=False, name='abs_didi')
         ])
 
 

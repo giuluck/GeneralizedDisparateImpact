@@ -41,7 +41,12 @@ if __name__ == '__main__':
                         model=f'mt {model}',
                         fold=fold,
                         degrees=degree,
-                        metrics=exp.metrics + [RegressionWeight(feature=f, degree=5, name=f) for f in exp.excluded],
+                        metrics=exp.metrics + [RegressionWeight(
+                            feature=f,
+                            classification=exp.classification,
+                            degree=5,
+                            name=f
+                        ) for f in exp.excluded]
                     )
                     assert isinstance(mdl, MovingTargets), f"There has been some errors with retrieved model {mdl}"
                     mdl.add_callback(WandBLogger(
