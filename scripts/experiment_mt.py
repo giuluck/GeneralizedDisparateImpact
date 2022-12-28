@@ -16,9 +16,9 @@ models = ['rf', 'gb', 'nn']
 
 datasets = {
     'communities categorical': [1],
-    'communities continuous': [1, 2, 3, 5],
+    'communities continuous': [1, 2, 3, 4, 5],
     'adult categorical': [1],
-    'adult continuous': [1, 2, 3]
+    'adult continuous': [1, 2, 3, 4, 5]
 }
 
 if __name__ == '__main__':

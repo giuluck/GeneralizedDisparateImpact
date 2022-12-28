@@ -10,9 +10,9 @@ import torch.random
 import wandb
 from sklearn.model_selection import train_test_split, KFold, StratifiedKFold
 
-from moving_targets.metrics import Metric, MSE, R2, CrossEntropy, Accuracy
+from moving_targets.metrics import Metric, MSE, R2, CrossEntropy, Accuracy, DIDI
 from moving_targets.util.typing import Dataset
-from src.metrics import HGR, RegressionWeight
+from src.metrics import HGR, RegressionWeight, BinnedDIDI
 from src.models import Model, RandomForest, GradientBoosting, NeuralNetwork, MovingTargets, NeuralSBR
 
 
@@ -23,8 +23,8 @@ class Experiment:
     ENTITY: str = 'shape-constraints'
     """The Weights&Biases entity name."""
 
-    classification: bool
-    """Whether this is a classification or a regression task."""
+    BINS: List[int] = [2, 3, 5, 10]
+    """The number of bins to be used in the BinnedDIDI metric."""
 
     @staticmethod
     def setup(seed: int):
@@ -52,13 +52,17 @@ class Experiment:
         raise NotImplementedError("please implement static method 'load_data'")
 
     def __init__(self,
-                 metrics: List[Metric],
-                 excluded: Union[str, List[str]],
+                 continuous: bool,
+                 classification: bool,
+                 excluded: str,
                  threshold: float,
                  units: List[int]):
         """
-        :param metrics:
-            The list of task-specific evaluation metrics.
+        :param continuous:
+            Whether the excluded feature is binary or continuous.
+
+        :param classification:
+            Whether this is a classification or a regression task.
 
         :param excluded:
             Either a single feature or the list of features to exclude.
@@ -70,7 +74,30 @@ class Experiment:
             The neural networks default units.
         """
 
-        task_metrics = [Accuracy(), CrossEntropy()] if self.classification else [R2(), MSE()]
+        metrics = [Accuracy(), CrossEntropy()] if classification else [R2(), MSE()]
+        if continuous:
+            for b in self.BINS:
+                metrics += [
+                    BinnedDIDI(
+                        bins=b,
+                        protected=excluded,
+                        classification=classification,
+                        percentage=True,
+                        name='rel_didi'
+                    ),
+                    BinnedDIDI(
+                        bins=b,
+                        protected=excluded,
+                        classification=classification,
+                        percentage=False,
+                        name='abs_didi'
+                    )
+                ]
+        else:
+            metrics += [
+                DIDI(protected=excluded, classification=classification, percentage=True, name='rel_didi'),
+                DIDI(protected=excluded, classification=classification, percentage=False, name='abs_didi')
+            ]
 
         self.__name__: str = ' '.join(re.split('(?=[A-Z])', self.__class__.__name__)).lower().strip(' ')
         """The dataset name."""
@@ -78,37 +105,50 @@ class Experiment:
         self.data: Tuple[pd.DataFrame, np.ndarray] = self.load_data()
         """The tuple (x, y) containing the input data and the target vector."""
 
-        self.excluded: List[str] = excluded if isinstance(excluded, list) else [excluded]
+        self.continuous: bool = continuous
+        """Whether the excluded feature is binary or continuous."""
+
+        self.classification: bool = classification
+        """Whether this is a classification or a regression task."""
+
+        self.excluded: str = excluded
         """The list of features whose causal effect should be excluded."""
 
         self.threshold: float = threshold
         """The threshold for the feature to exclude."""
 
         self.units: List[int] = units
-        """The neural networks default units."""
+        """The neural network default units."""
+
+        self.epochs: int = 200
+        """The neural network default units."""
+
+        self.batch: int = 128
+        """The neural network default batch size."""
+
+        self.degree: int = 5 if continuous else 1
+        """The default kernel degree."""
 
         self.metrics: List[Metric] = [
-            *task_metrics,
             *metrics,
             HGR(features=excluded, percentage=True, chi2=False, name='rel_hgr'),
             HGR(features=excluded, percentage=False, chi2=False, name='abs_hgr'),
             HGR(features=excluded, percentage=True, chi2=True, name='rel_chi2'),
             HGR(features=excluded, percentage=False, chi2=True, name='abs_chi2'),
-            # TODO: revert degree to 3
-            *[RegressionWeight(
-                feature=f,
-                classification=self.classification,
-                degree=3,
+            RegressionWeight(
+                feature=excluded,
+                classification=classification,
+                degree=5 if continuous else 1,
                 percentage=True,
-                name=f'rel_{f}'
-            ) for f in self.excluded],
-            *[RegressionWeight(
-                feature=f,
-                classification=self.classification,
-                degree=3,
+                name=f'rel_{excluded}'
+            ),
+            RegressionWeight(
+                feature=excluded,
+                classification=classification,
+                degree=5 if continuous else 1,
                 percentage=False,
-                name=f'abs_{f}'
-            ) for f in self.excluded]
+                name=f'abs_{excluded}'
+            )
         ]
         """The list of evaluation metrics."""
 
@@ -130,19 +170,20 @@ class Experiment:
             return GradientBoosting(classification=self.classification, **kwargs)
         elif model == 'nn':
             kwargs['hidden_units'] = kwargs.get('hidden_units') or self.units
-            kwargs['batch_size'] = kwargs.get('batch_size') or 128
-            kwargs['epochs'] = kwargs.get('epochs') or 200
+            kwargs['batch_size'] = kwargs.get('batch_size') or self.batch
+            kwargs['epochs'] = kwargs.get('epochs') or self.epochs
             return NeuralNetwork(classification=self.classification, **kwargs)
         elif model == 'sbr hgr':
             kwargs['threshold'] = kwargs.get('threshold') or self.threshold
             kwargs['hidden_units'] = kwargs.get('hidden_units') or self.units
-            kwargs['batch_size'] = kwargs.get('batch_size') or 128
-            kwargs['epochs'] = kwargs.get('epochs') or 200
+            kwargs['batch_size'] = kwargs.get('batch_size') or self.batch
+            kwargs['epochs'] = kwargs.get('epochs') or self.epochs
             return NeuralSBR(penalty='hgr', excluded=self.excluded, classification=self.classification, **kwargs)
         elif model == 'sbr cov':
             kwargs['threshold'] = kwargs.get('threshold') or self.threshold
             kwargs['hidden_units'] = kwargs.get('hidden_units') or self.units
-            kwargs['epochs'] = kwargs.get('epochs') or 500
+            kwargs['epochs'] = kwargs.get('epochs') or int(2.5 * self.batch)
+            kwargs['degrees'] = kwargs.get('degrees') or self.degree
             return NeuralSBR(
                 penalty='cov',
                 excluded=self.excluded,
@@ -154,11 +195,11 @@ class Experiment:
             learner = model[3:]
             if learner == 'nn':
                 kwargs['hidden_units'] = kwargs.get('hidden_units') or self.units
-                kwargs['batch_size'] = kwargs.get('batch_size') or 128
-                kwargs['epochs'] = kwargs.get('epochs') or 200
-            kwargs['iterations'] = kwargs['iterations'] if kwargs.get('iterations') is not None else 10
+                kwargs['batch_size'] = kwargs.get('batch_size') or self.batch
+                kwargs['epochs'] = kwargs.get('epochs') or self.epochs
             kwargs['thresholds'] = kwargs.get('thresholds') or self.threshold
             kwargs['metrics'] = kwargs.get('metrics') or self.metrics
+            kwargs['degrees'] = kwargs.get('degrees') or self.degree
             return MovingTargets(
                 learner=learner,
                 classification=self.classification,

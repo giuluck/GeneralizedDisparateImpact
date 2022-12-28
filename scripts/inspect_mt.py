@@ -7,7 +7,6 @@ from matplotlib import pyplot as plt
 
 from moving_targets import MACS
 from moving_targets.callbacks import Callback
-from moving_targets.metrics import DIDI
 from moving_targets.util.typing import Dataset
 from src.experiments import get
 from src.metrics import RegressionWeight
@@ -70,16 +69,16 @@ class DistributionCallback(Callback):
 
 
 if __name__ == '__main__':
-    exp = get('adult continuous')
+    exp = get('communities continuous')
     fold = exp.get_folds(folds=1)
-    degrees = 1 if 'categorical' in exp.__name__ else 5
+    degrees = 3 if exp.continuous else 1
     model = exp.get_model(
-        model='mt rf',
+        model='mt gb',
         fold=fold,
         degrees=degrees,
         iterations=10,
-        # metrics=[m for m in exp.metrics if isinstance(m, DIDI) or isinstance(m, RegressionWeight)],
         # metrics=[m for m in exp.metrics if isinstance(m, DIDI)],
+        # metrics=[m for m in exp.metrics if isinstance(m, DIDI) or isinstance(m, RegressionWeight)],
         # history=dict(features=None, orient_rows=True, excluded=['predictions/*', 'train/*', 'test/*']),
         history=dict(features=None, orient_rows=True, excluded=['predictions/*', 'adjusted/*']),
         verbose=1

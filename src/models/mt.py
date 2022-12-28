@@ -85,7 +85,7 @@ class CausalExclusionMaster(Master):
         self.vtype: str = vtype
         """The model variables vtypes."""
 
-        super().__init__(backend=GurobiBackend(TimeLimit=120, verbose=True),
+        super().__init__(backend=GurobiBackend(),
                          loss=HammingDistance() if classification else MSE(),
                          alpha=Harmonic(1.0))
 
