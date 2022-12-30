@@ -85,13 +85,17 @@ class CausalExclusionMaster(Master):
         self.vtype: str = vtype
         """The model variables vtypes."""
 
-        super().__init__(backend=GurobiBackend(),
+        super().__init__(backend=GurobiBackend(WorkLimit=60, verbose=True),
                          loss=HammingDistance() if classification else MSE(),
                          alpha=Harmonic(1.0))
 
     def build(self, x, y: np.ndarray, p: np.ndarray) -> np.ndarray:
         assert y.ndim == 1, f"Target vector must be one-dimensional, got shape {y.shape}"
         v = self.backend.add_variables(len(y), vtype=self.vtype, lb=self.lb, ub=self.ub, name='y')
+        # avoid degenerate case (all zeros or all ones) in classification scenario
+        if self.classification:
+            sum_v = self.backend.sum(v)
+            self.backend.add_constraints([sum_v >= 1, sum_v <= len(v) - 1])
         for feature, (threshold, degree) in self.features.items():
             # retrieve the column vector of the feature to exclude
             z = x[feature].values

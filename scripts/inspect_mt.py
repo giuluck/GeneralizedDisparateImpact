@@ -69,11 +69,11 @@ class DistributionCallback(Callback):
 
 
 if __name__ == '__main__':
-    exp = get('communities continuous')
+    exp = get('adult continuous')
     fold = exp.get_folds(folds=1)
-    degrees = 3 if exp.continuous else 1
+    degrees = 5 if exp.continuous else 1
     model = exp.get_model(
-        model='mt gb',
+        model='mt rf',
         fold=fold,
         degrees=degrees,
         iterations=10,

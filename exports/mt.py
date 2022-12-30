@@ -32,7 +32,7 @@ ORDERINGS = {
     'Model': list(MODELS.values()),
     'Dataset': list(DATASETS.values()),
     'Vector': ['Predictions', 'Projections'],
-    'Kernel Degree': [1, 2, 3, 5],
+    'Kernel Degree': [1, 2, 3, 4, 5],
     'Bins': [2, 3, 5, 10]
 }
 
@@ -65,7 +65,7 @@ def plot(data: pd.DataFrame,
         palette='tab10',
         legend_out=False,
         aspect=4 / 3,
-        height=6
+        height=7
     )
     fig.tight_layout()
     for a in fig.axes.flat:

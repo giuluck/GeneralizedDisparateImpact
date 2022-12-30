@@ -4,14 +4,13 @@ from src.experiments.experiment import Experiment
 
 
 def get(alias: str) -> Experiment:
-    match alias:
-        case 'adult continuous':
-            return Adult(continuous=True)
-        case 'adult categorical':
-            return Adult(continuous=False)
-        case 'communities continuous':
-            return Communities(continuous=True)
-        case 'communities categorical':
-            return Communities(continuous=False)
-        case _:
-            raise AssertionError(f"Unknown experiment alias '{alias}'")
+    if alias == 'adult continuous':
+        return Adult(continuous=True)
+    elif alias == 'adult categorical':
+        return Adult(continuous=False)
+    elif alias == 'communities continuous':
+        return Communities(continuous=True)
+    elif alias == 'communities categorical':
+        return Communities(continuous=False)
+    else:
+        raise AssertionError(f"Unknown experiment alias '{alias}'")

@@ -10,7 +10,6 @@ import time
 
 from moving_targets.callbacks import WandBLogger
 from src.experiments import get
-from src.metrics import RegressionWeight
 
 models = ['rf', 'gb', 'nn']
 
@@ -37,17 +36,7 @@ if __name__ == '__main__':
                     start = time.time()
                     x, y = fold['train']
                     # build the model without callback and add it later in order to use the model config
-                    mdl = exp.get_model(
-                        model=f'mt {model}',
-                        fold=fold,
-                        degrees=degree,
-                        metrics=exp.metrics + [RegressionWeight(
-                            feature=f,
-                            classification=exp.classification,
-                            degree=5,
-                            name=f
-                        ) for f in exp.excluded]
-                    )
+                    mdl = exp.get_model(model=f'mt {model}', fold=fold, degrees=degree)
                     assert isinstance(mdl, MovingTargets), f"There has been some errors with retrieved model {mdl}"
                     mdl.add_callback(WandBLogger(
                         project='nci_mt',

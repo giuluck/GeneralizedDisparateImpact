@@ -41,7 +41,13 @@ class GurobiBackend(Backend):
     def _solve_model(self) -> Optional:
         self.model.update()
         self.model.optimize()
-        return None if self.model.SolCount == 0 else self.model
+        if self.model.SolCount == 0:
+            # if no solution is found, remove the stopping criteria and optimize until the first feasible solution
+            for param in self.solver_args.keys():
+                self.model.setParam(param, 'default')
+            self.model.setParam('SolutionLimit', 1)
+            self.model.optimize()
+        return self.model
 
     def clear(self) -> Any:
         self._env.dispose()
