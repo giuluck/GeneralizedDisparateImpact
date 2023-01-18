@@ -12,7 +12,7 @@ from sklearn.model_selection import train_test_split, KFold, StratifiedKFold
 
 from moving_targets.metrics import Metric, MSE, R2, CrossEntropy, Accuracy, DIDI
 from moving_targets.util.typing import Dataset
-from src.metrics import HGR, RegressionWeight, BinnedDIDI
+from src.metrics import HGR, BinnedDIDI, GeneralizedDIDI, RegressionWeights
 from src.models import Model, RandomForest, GradientBoosting, NeuralNetwork, MovingTargets, NeuralSBR
 
 
@@ -25,6 +25,15 @@ class Experiment:
 
     BINS: List[int] = [2, 3, 5, 10]
     """The number of bins to be used in the BinnedDIDI metric."""
+
+    DEGREES: List[int] = [1, 2, 3, 4, 5]
+    """The kernel degrees to be used in the GeneralizedDIDI metric for continuous protected features."""
+
+    TRHESHOLD: float = 0.2
+    """The default threshold for the feature to exclude."""
+
+    RELATIVE: int = 1
+    """The default kernel on which to compute the relative threshold."""
 
     @staticmethod
     def setup(seed: int):
@@ -51,12 +60,7 @@ class Experiment:
         """
         raise NotImplementedError("please implement static method 'load_data'")
 
-    def __init__(self,
-                 continuous: bool,
-                 classification: bool,
-                 excluded: str,
-                 threshold: float,
-                 units: List[int]):
+    def __init__(self, continuous: bool, classification: bool, excluded: str, units: List[int]):
         """
         :param continuous:
             Whether the excluded feature is binary or continuous.
@@ -67,36 +71,32 @@ class Experiment:
         :param excluded:
             Either a single feature or the list of features to exclude.
 
-        :param threshold:
-            The threshold for the feature to exclude.
-
         :param units:
             The neural networks default units.
         """
-
         metrics = [Accuracy(), CrossEntropy()] if classification else [R2(), MSE()]
+        metrics += [RegressionWeights(classification, excluded, degree=d, name=f'k{d}-alpha') for d in self.DEGREES]
+        metrics += [
+            HGR(feature=excluded, relative=True, chi2=False, name='rel_hgr'),
+            HGR(feature=excluded, relative=False, chi2=False, name='abs_hgr'),
+            HGR(feature=excluded, relative=True, chi2=True, name='rel_chi2'),
+            HGR(feature=excluded, relative=False, chi2=True, name='abs_chi2')
+        ]
         if continuous:
             for b in self.BINS:
                 metrics += [
-                    BinnedDIDI(
-                        bins=b,
-                        protected=excluded,
-                        classification=classification,
-                        percentage=True,
-                        name='rel_didi'
-                    ),
-                    BinnedDIDI(
-                        bins=b,
-                        protected=excluded,
-                        classification=classification,
-                        percentage=False,
-                        name='abs_didi'
-                    )
+                    BinnedDIDI(classification, excluded, bins=b, relative=True, name=f'rel_binned_didi_{b}'),
+                    BinnedDIDI(classification, excluded, bins=b, relative=False, name=f'abs_binned_didi_{b}')
+                ]
+            for d in self.DEGREES:
+                metrics += [
+                    GeneralizedDIDI(classification, excluded, degree=d, relative=1, name=f'rel_generalized_didi_{d}'),
+                    GeneralizedDIDI(classification, excluded, degree=d, relative=0, name=f'abs_generalized_didi_{d}'),
                 ]
         else:
             metrics += [
-                DIDI(protected=excluded, classification=classification, percentage=True, name='rel_didi'),
-                DIDI(protected=excluded, classification=classification, percentage=False, name='abs_didi')
+                DIDI(classification, excluded, percentage=True, name='rel_didi'),
+                DIDI(classification, excluded, percentage=False, name='abs_didi')
             ]
 
         self.__name__: str = ' '.join(re.split('(?=[A-Z])', self.__class__.__name__)).lower().strip(' ')
@@ -114,9 +114,6 @@ class Experiment:
         self.excluded: str = excluded
         """The list of features whose causal effect should be excluded."""
 
-        self.threshold: float = threshold
-        """The threshold for the feature to exclude."""
-
         self.units: List[int] = units
         """The neural network default units."""
 
@@ -129,27 +126,7 @@ class Experiment:
         self.degree: int = 5 if continuous else 1
         """The default kernel degree."""
 
-        self.metrics: List[Metric] = [
-            *metrics,
-            HGR(features=excluded, percentage=True, chi2=False, name='rel_hgr'),
-            HGR(features=excluded, percentage=False, chi2=False, name='abs_hgr'),
-            HGR(features=excluded, percentage=True, chi2=True, name='rel_chi2'),
-            HGR(features=excluded, percentage=False, chi2=True, name='abs_chi2'),
-            RegressionWeight(
-                feature=excluded,
-                classification=classification,
-                degree=5 if continuous else 1,
-                percentage=True,
-                name=f'rel_{excluded}'
-            ),
-            RegressionWeight(
-                feature=excluded,
-                classification=classification,
-                degree=5 if continuous else 1,
-                percentage=False,
-                name=f'abs_{excluded}'
-            )
-        ]
+        self.metrics: List[Metric] = metrics
         """The list of evaluation metrics."""
 
     def get_model(self, model: str, **kwargs) -> Model:
@@ -174,33 +151,33 @@ class Experiment:
             kwargs['epochs'] = kwargs.get('epochs') or self.epochs
             return NeuralNetwork(classification=self.classification, **kwargs)
         elif model == 'sbr hgr':
-            kwargs['threshold'] = kwargs.get('threshold') or self.threshold
+            kwargs['relative'] = kwargs.get('relative') or self.RELATIVE
+            kwargs['threshold'] = kwargs.get('threshold') or self.TRHESHOLD
             kwargs['hidden_units'] = kwargs.get('hidden_units') or self.units
             kwargs['batch_size'] = kwargs.get('batch_size') or self.batch
             kwargs['epochs'] = kwargs.get('epochs') or self.epochs
             return NeuralSBR(penalty='hgr', excluded=self.excluded, classification=self.classification, **kwargs)
-        elif model == 'sbr cov':
-            kwargs['threshold'] = kwargs.get('threshold') or self.threshold
+        elif model.startswith('sbr'):
+            _, penalty = model.split(' ')
+            kwargs['relative'] = kwargs.get('relative') or self.RELATIVE
+            kwargs['threshold'] = kwargs.get('threshold') or self.TRHESHOLD
             kwargs['hidden_units'] = kwargs.get('hidden_units') or self.units
-            kwargs['epochs'] = kwargs.get('epochs') or int(2.5 * self.batch)
-            kwargs['degrees'] = kwargs.get('degrees') or self.degree
-            return NeuralSBR(
-                penalty='cov',
-                excluded=self.excluded,
-                classification=self.classification,
-                batch_size=len(self.data[0]),
-                **kwargs
-            )
+            kwargs['epochs'] = kwargs.get('epochs') or int(2.5 * self.epochs)
+            kwargs['degree'] = kwargs.get('degree') or self.degree
+            return NeuralSBR(penalty=penalty, excluded=self.excluded, classification=self.classification,
+                             batch_size=len(self.data[0]), **kwargs)
         elif model.startswith('mt '):
-            learner = model[3:]
+            _, master, learner = model.split(' ')
             if learner == 'nn':
                 kwargs['hidden_units'] = kwargs.get('hidden_units') or self.units
                 kwargs['batch_size'] = kwargs.get('batch_size') or self.batch
                 kwargs['epochs'] = kwargs.get('epochs') or self.epochs
-            kwargs['thresholds'] = kwargs.get('thresholds') or self.threshold
+            kwargs['relative'] = kwargs.get('relative') or self.RELATIVE
+            kwargs['threshold'] = kwargs.get('threshold') or self.TRHESHOLD
             kwargs['metrics'] = kwargs.get('metrics') or self.metrics
-            kwargs['degrees'] = kwargs.get('degrees') or self.degree
+            kwargs['degree'] = kwargs.get('degree') or self.degree
             return MovingTargets(
+                master=master,
                 learner=learner,
                 classification=self.classification,
                 excluded=self.excluded,
@@ -249,7 +226,7 @@ class Experiment:
         metrics = {}
         for split, (x, y) in fold.items():
             p = model.predict(x)
-            results = {}
+            results = {'predictions': list(p)}
             for metric in self.metrics:
                 value = metric(x, y, p)
                 if isinstance(value, (int, float, np.number)):

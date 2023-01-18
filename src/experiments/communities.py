@@ -28,6 +28,5 @@ class Communities(Experiment):
             excluded='pctBlack' if continuous else 'race',
             continuous=continuous,
             classification=False,
-            threshold=0.2,
             units=[256, 256]
         )

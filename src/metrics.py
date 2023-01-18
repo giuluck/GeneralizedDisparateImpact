@@ -1,28 +1,20 @@
 from math import pi, sqrt
-from typing import Callable, Union, List
+from typing import Any, Union
 
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.preprocessing import PolynomialFeatures
 
 from moving_targets.metrics import Metric, DIDI
 from moving_targets.util import probabilities
 
 
-class RegressionWeight(Metric):
-    """Computes the weight(s) of a linear regression model trained uniquely on the given feature after it gets
-    processed via a polynomial kernel with the given degree."""
+class RegressionWeights(Metric):
+    """Computes the weights of the shadow linear regression model."""
 
-    def __init__(self,
-                 feature: str,
-                 classification: bool,
-                 degree: int = 1,
-                 higher_orders: str = 'all',
-                 percentage: bool = True,
-                 name: str = 'weight'):
+    def __init__(self, classification: bool, protected: str, degree: int = 1, name: str = 'w'):
         """
-        :param feature:
+        :param protected:
             The name of the feature to inspect.
 
         :param classification:
@@ -31,56 +23,59 @@ class RegressionWeight(Metric):
         :param degree:
             The degree of the polynomial kernel.
 
-        :param higher_orders:
-            The policy on how to present the weights of higher-order degrees if a kernel > 1 is passed. Options are
-            'none' to get just the first-order degree,  'all' to get all the higher-order degrees, or 'max' to get
-            just the maximal higher-order degree.
-
-        :param percentage:
-            Whether the weight is computed as an absolute or a relative value.
-
         :param name:
             The name of the metric.
         """
-        super(RegressionWeight, self).__init__(name=name)
+        super(RegressionWeights, self).__init__(name=name)
 
-        # handle higher-orders postprocessing
-        if degree == 1 or higher_orders == 'none':
-            higher_orders = lambda w: w[1]
-        elif higher_orders == 'max':
-            higher_orders = lambda w: {'w1': w[1], 'w+': np.max(w[2:])}
-        elif higher_orders == 'all':
-            higher_orders = lambda w: {f'w{i + 1}': v for i, v in enumerate(w[1:])}
-        else:
-            raise AssertionError(f"Unknown higher orders option '{higher_orders}'")
-
-        self.feature: str = feature
+        self.protected: str = protected
         """The name of the feature to inspect."""
 
         self.classification: bool = classification
         """Whether this is for a classification or a regression task."""
 
-        self.kernel: Callable = PolynomialFeatures(degree=degree, include_bias=True).fit_transform
-        """The kernel function to transform each constrained feature."""
+        self.degree: int = degree
+        """The degree of the polynomial kernel."""
 
-        self.higher_orders: Callable = higher_orders
-        """The postprocessing function to return the higher-orders weights."""
+    @staticmethod
+    def get_weights(x, y, degree: int, use_torch: bool = False) -> Any:
+        """
+        Computes the the vector <alpha> which is the solution of the following least-square problem:
+            argmin || <phi> @ <alpha_tilde> - <psi> ||_2^2
+        where <phi> is the zero-centered kernel matrix built from the excluded vector x, and <psi> is the zero-centered
+        constant term vector built from the output targets y.
 
-        self.percentage: bool = percentage
-        """Whether the HGR is computed as an absolute or a relative value."""
+        :param x:
+            The vector of features to be excluded.
+
+        :param y:
+            The vector of output targets.
+
+        :param degree:
+            The kernel degree for the features to be excluded.
+
+        :param use_torch:
+            Whether to compute the weights using torch.lstsq or numpy.lstsq
+
+        :return:
+            The value of the generalized didi. If return_weights is True, a tuple (<didi>, <alpha_tilde>) is returned.
+        """
+        phi = [x ** d - (x ** d).mean() for d in np.arange(degree) + 1]
+        psi = y - y.mean()
+        if use_torch:
+            # the 'gelsd' driver allows to have both more precise and more reproducible results
+            phi = torch.stack(phi, dim=1)
+            alpha, _, _, _ = torch.linalg.lstsq(phi, psi, driver='gelsd')
+        else:
+            phi = np.stack(phi, axis=1)
+            alpha, _, _, _ = np.linalg.lstsq(phi, psi, rcond=None)
+        return alpha
 
     def __call__(self, x, y, p):
-        a = self.kernel(x[[self.feature]])
+        x = x[self.protected].values
         p = probabilities.get_classes(p) if self.classification else p
-        wp, _, _, _ = np.linalg.lstsq(a, p, rcond=None)
-        if self.percentage:
-            wy, _, _, _ = np.linalg.lstsq(a, y, rcond=None)
-            # when wy == 0.0, change wp float('inf') if its value is not null and then change wy to 1.0
-            wp[np.logical_and(wy == 0.0, wp != 0.0)] = float('inf')
-            wy[wy == 0.0] = 1.0
-            return self.higher_orders(np.abs(wp / wy))
-        else:
-            return self.higher_orders(np.abs(wp))
+        alpha = self.get_weights(x=x, y=p, degree=self.degree, use_torch=False)
+        return {str(i + 1): a for i, a in enumerate(alpha)}
 
 
 class BinnedDIDI(DIDI):
@@ -90,8 +85,8 @@ class BinnedDIDI(DIDI):
                  classification: bool,
                  protected: str,
                  bins: int = 2,
-                 percentage: bool = True,
-                 name: str = 'didi'):
+                 relative: bool = True,
+                 name: str = 'binned_didi'):
         """
         :param classification:
             Whether the DIDI is computed for a classification or a regression task.
@@ -102,13 +97,13 @@ class BinnedDIDI(DIDI):
         :param bins:
             The number of bins.
 
-        :param percentage:
+        :param relative:
             Whether the DIDI is computed as an absolute or a relative value.
 
         :param name:
             The name of the metric.
         """
-        super(BinnedDIDI, self).__init__(classification, protected, percentage, name=f'{name}_{bins}')
+        super(BinnedDIDI, self).__init__(classification, protected, percentage=relative, name=name)
 
         self.bins: int = bins
         """The number of bins."""
@@ -117,6 +112,84 @@ class BinnedDIDI(DIDI):
         x = x.copy()
         x[self.protected] = pd.qcut(x[self.protected], q=self.bins).cat.codes
         return super(BinnedDIDI, self).__call__(x, y, p)
+
+
+class GeneralizedDIDI(Metric):
+    def __init__(self,
+                 classification: bool,
+                 protected: str,
+                 degree: int = 1,
+                 relative: Union[bool, int] = 1,
+                 name: str = 'generalized_didi'):
+        """
+        :param protected:
+            The name of the protected feature.
+
+        :param classification:
+            Whether this is for a classification or a regression task (in the first scenario, binarize the predictions).
+
+        :param degree:
+            The kernel degree for the excluded feature.
+
+        :param relative:
+            If a positive integer k is passed, it computes the relative value with respect to the indicator computed on
+            the original targets with kernel k. If True is passed, it assumes k = 1. Otherwise, if False is passed, it
+            simply computes the absolute value of the indicator.
+
+        :param name:
+            The name of the metric.
+        """
+        super(GeneralizedDIDI, self).__init__(name=name)
+
+        self.classification: bool = classification
+        """Whether we are dealing with a binary classification or a regression task."""
+
+        self.protected: str = protected
+        """The feature to be excluded."""
+
+        self.degree: int = degree
+        """The kernel degree used for the features to be excluded."""
+
+        self.relative: int = int(relative) if isinstance(relative, bool) else relative
+        """The kernel degree to use to compute the metric in relative value, or 0 for absolute value."""
+
+    @staticmethod
+    def generalized_didi(x, y, degree: int, use_torch: bool = False, return_weights: bool = False) -> Any:
+        """
+        Computes the generalized didi as the norm 1 of the vector <alpha_tilde> which is the solution of the following
+        least-square problem:
+            argmin || <phi> @ <alpha_tilde> - <psi> ||_2^2
+        where <phi> is the zero-centered kernel matrix built from the excluded vector x, and <psi> is the zero-centered
+        constant term vector built from the output targets y.
+
+        :param x:
+            The vector of features to be excluded.
+
+        :param y:
+            The vector of output targets.
+
+        :param degree:
+            The kernel degree for the features to be excluded.
+
+        :param use_torch:
+            Whether to compute the weights using torch.lstsq or numpy.lstsq
+
+        :param return_weights:
+            Whether to return the vector <alpha_tilde> along with the didi value or not.
+
+        :return:
+            The value of the generalized didi. If return_weights is True, a tuple (<didi>, <alpha_tilde>) is returned.
+        """
+        alpha_tilde = RegressionWeights.get_weights(x=x, y=y, degree=degree, use_torch=use_torch)
+        didi = torch.abs(alpha_tilde).sum() if use_torch else np.abs(alpha_tilde).sum()
+        return (didi, alpha_tilde) if return_weights else didi
+
+    def __call__(self, x, y, p):
+        x = x[self.protected].values
+        p = probabilities.get_classes(p) if self.classification else p
+        didi_p = self.generalized_didi(x, p, degree=self.degree)
+        didi_y = self.generalized_didi(x, y, degree=self.relative) if self.relative > 0 else 1.0
+        return (didi_p / didi_y) if didi_y > 0 else 0.0
 
 
 class HGR(Metric):
@@ -181,12 +254,12 @@ class HGR(Metric):
         else:
             return torch.linalg.svd(q)[1][1]
 
-    def __init__(self, features: Union[str, List[str]], percentage: bool = True, chi2: bool = False, name: str = 'hgr'):
+    def __init__(self, feature: str, relative: bool = True, chi2: bool = False, name: str = 'hgr'):
         """
-        :param features:
-            The name of the features to inspect.
+        :param feature:
+            The name of the feature to inspect.
 
-        :param percentage:
+        :param relative:
             Whether the HGR is computed as an absolute or a relative value.
 
         :param chi2:
@@ -200,31 +273,16 @@ class HGR(Metric):
         self.chi2: bool = chi2
         """Whether to return the chi^2 approximation of the HGR or its actual value."""
 
-        self.percentage: bool = percentage
+        self.relative: bool = relative
         """Whether the HGR is computed as an absolute or a relative value."""
 
-        self.features: Union[str, List[str]] = features
+        self.feature: str = feature
         """The name of the feature to inspect."""
 
-    def _compute_val(self, z: torch.Tensor, y: torch.Tensor, p: torch.Tensor):
-        hgr_p = HGR.hgr(p, z, chi2=self.chi2).item()
-        if self.percentage:
-            hgr_y = HGR.hgr(y, z, chi2=self.chi2).item()
-            if hgr_y == 0.0:
-                return 0.0 if hgr_p == 0.0 else float('inf')
-            else:
-                return hgr_p / hgr_y
-        else:
-            return hgr_p
-
     def __call__(self, x, y, p):
-        p = torch.tensor(p, dtype=torch.float)
+        x = torch.tensor(x[self.feature].values, dtype=torch.float)
         y = torch.tensor(y, dtype=torch.float)
-        if isinstance(self.features, str):
-            z = torch.tensor(x[self.features].values, dtype=torch.float)
-            return self._compute_val(z, y, p)
-        metrics = {}
-        for feature in self.features:
-            z = torch.tensor(x[feature].values, dtype=torch.float)
-            metrics[feature] = self._compute_val(z, y, p)
-        return metrics
+        p = torch.tensor(p, dtype=torch.float)
+        hgr_p = HGR.hgr(p, x, chi2=self.chi2).item()
+        hgr_y = HGR.hgr(y, x, chi2=self.chi2).item() if self.relative else 1.0
+        return hgr_p / hgr_y

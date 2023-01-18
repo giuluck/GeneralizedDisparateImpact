@@ -5,7 +5,7 @@ import seaborn.categorical
 from matplotlib import pyplot as plt
 
 from moving_targets.learners import LinearRegression
-from src.models import CausalExclusionMaster
+from src.models import FirstOrderMaster
 
 
 # noinspection PyProtectedMember
@@ -56,7 +56,7 @@ if __name__ == '__main__':
             y = out
             title = 'Original Targets'
         else:
-            master = CausalExclusionMaster(classification=False, degrees=1, features='ctg', thresholds=0.0)
+            master = FirstOrderMaster(classification=False, degree=1, excluded='ctg', threshold=0.0, relative=0)
             y = master.adjust_targets(x=inp, y=out, p=None)
             title = 'Constrained Targets'
         data[f'y_{name}'] = y
@@ -74,6 +74,7 @@ if __name__ == '__main__':
             sns.lineplot(x=sx, y=sy, linewidth=linewidth, color=model_colors[0], label=f'lr')
     # show plot and save csv data according to boolean variables
     if save_data:
+        # noinspection PyTypeChecker
         pd.DataFrame.from_dict(data).to_csv(f'{folder}/categorical.csv', index=False)
     if save_plot:
         plt.savefig(f'{folder}/categorical.png', format='png')
@@ -95,7 +96,7 @@ if __name__ == '__main__':
             name = 'pre'
             title = 'Original Targets'
         else:
-            master = CausalExclusionMaster(classification=False, degrees=kernel, features='cnt', thresholds=0.0)
+            master = FirstOrderMaster(classification=False, degree=kernel, excluded='cnt', threshold=0.0, relative=0)
             y = master.adjust_targets(x=inp, y=out, p=None)
             title = f'Constrained Targets up to Order {kernel}'
             name = f'k{kernel}'
@@ -115,6 +116,7 @@ if __name__ == '__main__':
             sns.lineplot(x=sx, y=sy3, linewidth=linewidth, alpha=model_alpha, color=model_colors[2], label=f'lr 3')
     # show plot and save csv data according to boolean variables
     if save_data:
+        # noinspection PyTypeChecker
         pd.DataFrame.from_dict(data).to_csv(f'{folder}/continuous.csv', index=False)
     if save_plot:
         plt.savefig(f'{folder}/continuous.png', format='png')

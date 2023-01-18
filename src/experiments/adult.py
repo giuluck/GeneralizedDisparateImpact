@@ -29,6 +29,5 @@ class Adult(Experiment):
             excluded='age' if continuous else 'sex',
             continuous=continuous,
             classification=True,
-            threshold=0.2,
             units=[32, 32, 32]
         )

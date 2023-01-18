@@ -129,18 +129,15 @@ class NeuralNetwork(Model, TorchMLP):
 
     def __init__(self,
                  classification: bool,
+                 hidden_units: List[int],
+                 batch_size: int,
+                 epochs: int,
                  validation_split: float = 0.0,
-                 hidden_units: List[int] = (128, 128),
-                 batch_size: int = 128,
-                 epochs: int = 200,
                  logger: Optional[WandbLogger] = None,
                  verbose: bool = False):
         """
         :param classification:
             Whether we are dealing with a binary classification or a regression task.
-
-        :param validation_split:
-            The neural network validation split.
 
         :param hidden_units:
             The neural network hidden units.
@@ -150,6 +147,9 @@ class NeuralNetwork(Model, TorchMLP):
 
         :param epochs:
             The neural network training epochs.
+
+        :param validation_split:
+            The neural network validation split.
 
         :param logger:
             An optional callback for logging the training history on Weights&Biases.

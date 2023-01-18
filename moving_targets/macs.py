@@ -85,7 +85,7 @@ class MACS(StatsLogger):
             sample_weight: Optional[np.ndarray] = None,
             val_data: Optional[Dataset] = None,
             callbacks: List[Callback] = (),
-            verbose: Union[int, bool] = 2) -> History:
+            verbose: Union[bool, int] = 2) -> History:
         """Fits the `Learner` based on the Moving Targets iterative procedure.
 
         :param x:

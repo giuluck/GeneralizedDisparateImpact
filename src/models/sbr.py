@@ -1,5 +1,5 @@
 import logging
-from typing import List, Union, Any, Callable
+from typing import List, Callable, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -8,7 +8,7 @@ from torch import optim
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 
-from src.metrics import HGR
+from src.metrics import HGR, GeneralizedDIDI as gDIDI
 from src.models.base import NeuralNetwork
 
 
@@ -18,33 +18,38 @@ class NeuralSBR(NeuralNetwork):
 
     def __init__(self,
                  penalty: str,
+                 excluded: str,
                  classification: bool,
-                 excluded: Union[str, List[str]],
-                 threshold: float = 0.0,
-                 degrees: int = 1,
+                 degree: int,
+                 threshold: float,
+                 relative: Union[bool, int],
+                 hidden_units: List[int],
+                 batch_size: int,
+                 epochs: int,
                  validation_split: float = 0.0,
-                 hidden_units: List[int] = (128, 128),
-                 batch_size: int = 128,
-                 epochs: int = 200,
                  verbose: bool = False):
         """
         :param penalty:
-            The type of penalty to use, either 'cov' or 'hgr'.
+            The type of penalty to use, either 'first' (constraints the generalized didi at the first order while
+            excluding higher order correlations via multiple penalizers), 'didi' (constraints the generalized didi with
+            a single penalizer), or 'hgr' (constraints the chi^2 with a single penalizer).
+
+        :param excluded:
+            The feature to be excluded.
 
         :param classification:
             Whether we are dealing with a binary classification or a regression task.
 
-        :param excluded:
-            The features to be excluded.
+        :param degree:
+            The kernel degree for the excluded feature. If the penalty is 'hgr', this value is ignored.
 
         :param threshold:
             The exclusion threshold.
 
-        :param degrees:
-            The kernel degrees used for the features to be excluded (used for constraint = 'cov' only).
-
-        :param validation_split:
-            The neural network validation split.
+        :param relative:
+            If a positive integer k is passed, it computes the relative value with respect to the indicator computed on
+            the original targets with kernel k. If True is passed, it assumes k = 1. Otherwise, if False is passed, it
+            simply computes the absolute value of the indicator.
 
         :param hidden_units:
             The neural network hidden units.
@@ -54,6 +59,9 @@ class NeuralSBR(NeuralNetwork):
 
         :param epochs:
             The neural network training epochs.
+
+        :param validation_split:
+            The neural network validation split.
 
         :param verbose:
             The neural network verbosity.
@@ -69,12 +77,21 @@ class NeuralSBR(NeuralNetwork):
         )
 
         # validate constraint and degrees
-        if penalty == 'cov':
-            reg_vector = self._cov_penalty
+        assert degree > 0, f"The kernel degree must be a positive integer, got {degree}"
+        if penalty == 'first':
+            reg_vector = self._first_penalty
+            penalizers = degree
+        elif penalty == 'didi':
+            reg_vector = self._didi_penalty
+            penalizers = 1
         elif penalty == 'hgr':
-            if degrees != 1:
-                logging.log(level=logging.WARNING, msg=f"HGR does not accept degree > 1, use 1 instead of {degrees}")
-                degrees = 1
+            if degree != 1:
+                logging.log(level=logging.WARNING, msg=f"HGR does not accept degree > 1, use 1 instead of {degree}")
+                degree = 1
+            if isinstance(relative, int) and relative > 1:
+                logging.log(level=logging.WARNING, msg=f"HGR does not accept relative > 1, use 1 instead of {relative}")
+                relative = 1
+            penalizers = 1
             reg_vector = self._hgr_penalty
         else:
             raise ValueError(f"Unknown penalty '{penalty}'")
@@ -82,23 +99,30 @@ class NeuralSBR(NeuralNetwork):
         # update name and configuration
         self.__name__: str = f'sbr {penalty}'
         self.config['penalty'] = penalty
-        self.config['degrees'] = degrees
+        self.config['degree'] = degree
         self.config['excluded'] = excluded
         self.config['threshold'] = threshold
+        self.config['relative'] = relative
 
         self.classification: bool = classification
         """Whether we are dealing with a binary classification or a regression task."""
 
-        self.excluded: List[Any] = excluded if isinstance(excluded, list) else [excluded]
-        """The features to be excluded."""
+        self.excluded: str = excluded
+        """The feature to be excluded."""
+
+        self.excluded_index: Optional[int] = None
+        """The index of the feature to be excluded."""
 
         self.threshold: float = threshold
         """The exclusion threshold."""
 
-        self.degrees: int = degrees
-        """The kernel degrees used for the features to be excluded."""
+        self.relative: int = int(relative) if isinstance(relative, bool) else relative
+        """The kernel degree to use to compute the metric in relative value, or 0 for absolute value."""
 
-        self.alpha: Variable = Variable(torch.zeros(len(self.excluded) * degrees), requires_grad=True, name='alpha')
+        self.degree: int = degree
+        """The kernel degree used for the features to be excluded."""
+
+        self.alpha: Variable = Variable(torch.zeros(penalizers), requires_grad=True, name='alpha')
         """The alpha value for balancing compiled and regularized loss."""
 
         self.alpha_optimizer: optim.Optimizer = optim.Adam(params=[self.alpha])
@@ -107,25 +131,23 @@ class NeuralSBR(NeuralNetwork):
         self.regularization_vector: Callable = reg_vector
         """A function f(x, y, p) -> v which returns a vector of partial losses, one per each constraint."""
 
-    def _cov_penalty(self, x: torch.Tensor, y: torch.Tensor, p: torch.Tensor) -> torch.Tensor:
-        # the total regularization is given by the sum of violations per excluded feature
-        # where the violation of each excluded feature is compute as the sum of violations on the covariances
-        reg_vector = []
-        for feature in self.excluded:
-            # here we cannot use the covariance formulation as in Moving Targets since we have no guarantees that the
-            # weights will be correctly constrained (thus no assumption on higher-order weights can be done)
-            # therefore we will use torch implementation of the least square errors
-            # (the 'gelsd' driver allows to have both more precise and more reproducible results)
-            z = x[:, feature]
-            z = torch.stack([z ** d for d in range(self.degrees + 1)], dim=1)
-            wp, _, _, _ = torch.linalg.lstsq(z, p, driver='gelsd')
-            wy, _, _, _ = torch.linalg.lstsq(z, y, driver='gelsd')
-            # we multiply the threshold by the relative weight in order to avoid numerical errors
-            reg_vector += [torch.maximum(torch.zeros(1), torch.abs(wp[1]) - self.threshold * torch.abs(wy[1]))]
-            # the violation of the higher orders is computed as the absolute value of the respective weight
-            reg_vector += [torch.maximum(torch.zeros(1), torch.abs(wp[2:, 0]) - self.EPS)]
-        # finally, we concatenate all the values to obtain a constraint vector
-        return torch.concatenate(reg_vector)
+    def _first_penalty(self, x: torch.Tensor, y: torch.Tensor, p: torch.Tensor) -> torch.Tensor:
+        # for this penalty, we constraint the relative didi to be lower than the threshold (optionally scaled by the
+        # value computed on the original targets with degree k if relative is a positive integer k) and, additionally,
+        # we constraint the other weights to be null (smaller than an epsilon) to force the higher-orders exclusion
+        didi_p, alpha = gDIDI.generalized_didi(x, p, degree=self.degree, use_torch=True, return_weights=True)
+        didi_y = gDIDI.generalized_didi(x, y, degree=self.relative, use_torch=True) if self.relative > 0 else 1
+        return torch.concatenate((
+            torch.maximum(torch.zeros(1), didi_p / didi_y - self.threshold),
+            torch.maximum(torch.zeros(1), torch.abs(alpha[1:]) - self.EPS)
+        ))
+
+    def _didi_penalty(self, x: torch.Tensor, y: torch.Tensor, p: torch.Tensor) -> torch.Tensor:
+        # for this penalty, we simply constraint the relative didi to be lower than the threshold (optionally scaled by
+        # the value computed on the original targets with degree k if relative is a positive integer k)
+        didi_p = gDIDI.generalized_didi(x, p, degree=self.degree, use_torch=True)
+        didi_y = gDIDI.generalized_didi(x, y, degree=self.relative, use_torch=True) if self.relative > 0 else 1
+        return torch.maximum(torch.zeros(1), didi_p / didi_y - self.threshold)
 
     def _hgr_penalty(self, x: torch.Tensor, y: torch.Tensor, p: torch.Tensor) -> torch.Tensor:
         # This code has been taken from: https://github.com/criteo-research/continuous-fairness/.
@@ -139,22 +161,13 @@ class NeuralSBR(NeuralNetwork):
         # as for the other metrics), i.e., instead of constraining the value \chi^2(p, z), we constraint the value
         # \chi^2(p, z) / \chi^2(y, z). In this way, we should have both more explainable and more comparable results.
         # Moreover, we also deal with the case in which we have more than one feature by adding all the \chi^2.
-        y, p = y.squeeze(), p.squeeze()
-        reg_vector = []
-        for feature in self.excluded:
-            # retrieve the correct feature to exclude
-            z = x[:, feature]
-            # compute the \chi^2 value for the predictions and for the original targets
-            chi2_p = HGR.hgr(p, z, chi2=True)
-            chi2_y = HGR.hgr(y, z, chi2=True)
-            # constraint the relative \chi^2 by multiplying the threshold to avoid numerical errors
-            reg_vector += [torch.maximum(torch.zeros(1), chi2_p - self.threshold * chi2_y)]
-        # finally, we concatenate all the values to obtain a constraint vector
-        return torch.concatenate(reg_vector)
+        chi2_p = HGR.hgr(p, x, chi2=True)
+        chi2_y = HGR.hgr(y, x, chi2=True) if self.relative > 0 else 1
+        return torch.maximum(torch.zeros(1), chi2_p / chi2_y - self.threshold)
 
     def _fit(self, x: pd.DataFrame, y: np.ndarray):
-        # change feature names with feature indices
-        self.excluded = [i for i, c in enumerate(x.columns) if c in self.excluded]
+        # get feature index from feature name
+        self.excluded_index = x.columns.get_loc(self.excluded)
         # load data and start the model training
         ds = NeuralNetwork.Dataset(x=np.array(x), y=np.array(y))
         loader = DataLoader(dataset=ds, batch_size=self.batch_size, shuffle=True, num_workers=0)
@@ -169,7 +182,7 @@ class NeuralSBR(NeuralNetwork):
                 optimizer.zero_grad()
                 pred = self.model(inp)
                 def_loss = self.loss(pred, out)
-                reg_vector = self.regularization_vector(inp, out, pred)
+                reg_vector = self.regularization_vector(inp[:, self.excluded_index], out.squeeze(), pred.squeeze())
                 reg_loss = self.alpha @ reg_vector
                 tot_loss = def_loss + reg_loss
                 tot_loss.backward()
@@ -178,7 +191,7 @@ class NeuralSBR(NeuralNetwork):
                 self.alpha_optimizer.zero_grad()
                 pred = self.model(inp)
                 def_loss = self.loss(pred, out)
-                reg_vector = self.regularization_vector(inp, out, pred)
+                reg_vector = self.regularization_vector(inp[:, self.excluded_index], out.squeeze(), pred.squeeze())
                 reg_loss = self.alpha @ reg_vector
                 tot_loss = -def_loss - reg_loss
                 tot_loss.backward()

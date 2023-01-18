@@ -8,13 +8,20 @@ import time
 
 from src.experiments import get
 
-datasets = ['communities categorical', 'communities continuous', 'adult categorical', 'adult continuous']
-
-models = ['rf', 'gb', 'nn', 'mt rf', 'mt gb', 'mt nn', 'sbr cov', 'sbr hgr']
+experiments = {
+    'communities categorical': ['rf', 'gb', 'nn', 'sbr first', 'mt first rf', 'mt first gb', 'mt first nn'],
+    'communities continuous': ['rf', 'gb', 'nn', 'sbr first', 'mt first rf', 'mt first gb', 'mt first nn'],
+    'adult categorical': ['rf', 'gb', 'nn', 'sbr first', 'sbr didi',
+                          'mt first rf', 'mt first gb', 'mt first nn',
+                          'mt didi rf', 'mt didi gb', 'mt didi nn'],
+    'adult continuous': ['rf', 'gb', 'nn', 'sbr first', 'sbr didi',
+                         'mt first rf', 'mt first gb', 'mt first nn',
+                         'mt didi rf', 'mt didi gb', 'mt didi nn'],
+}
 
 if __name__ == '__main__':
     print('-------------------------------------------------')
-    for dataset in datasets:
+    for dataset, models in experiments.items():
         print(f' * DATASET: {dataset}')
         for i, model in enumerate(models):
             if i != 0:
@@ -27,7 +34,7 @@ if __name__ == '__main__':
                 start = time.time()
                 x, y = fold['train']
                 mdl = exp.get_model(model=model)
-                exp.run_instance(model=mdl, x=x, y=y, fold=fold, index=idx, log='nci_experiments', show=False)
+                exp.run_instance(model=mdl, x=x, y=y, fold=fold, index=idx, log='experiments', show=False)
                 print(f' -- elapsed time = {time.time() - start:.2f}s')
         print('-------------------------------------------------')
     shutil.rmtree('wandb')

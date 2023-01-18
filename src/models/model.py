@@ -20,7 +20,7 @@ class Model:
         self.is_fit: bool = False
         """Whether or not the model has been fitted."""
 
-        self.config: Dict[str, Any] = config
+        self.config: Dict[str, Any] = {k: 'None' if v is None else v for k, v in config.items()}
         """A dictionary of parameters that represent the configuration of the model."""
 
     def _fit(self, x: pd.DataFrame, y: np.ndarray):
