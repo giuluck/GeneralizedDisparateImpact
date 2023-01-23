@@ -8,9 +8,9 @@ sns.set_context('notebook')
 sns.set_style('whitegrid')
 
 if __name__ == '__main__':
-    exp = get('communities continuous')
+    exp = get('adult continuous')
     fold = exp.get_folds(folds=1)
-    model = exp.get_model(model='mt first rf', verbose=True)
+    model = exp.get_model(model='mt rf fine', verbose=True)
     print('MODEL CONFIGURATION:')
     for k, v in model.config.items():
         print(f'  > {k} --> {v}')

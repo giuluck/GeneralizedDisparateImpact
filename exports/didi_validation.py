@@ -14,7 +14,7 @@ sns.set_context('poster')
 sns.set_style('whitegrid')
 
 # categorical orderings for datasets, kernels, and bins
-DATASETS = ['Communities', 'Adult']
+DATASETS = ['Communities & Crimes', 'Adult']
 KERNELS = [1, 2, 3, 4, 5]
 BINS = [2, 3, 5, 10]
 
@@ -57,14 +57,14 @@ def plot(df: dict, x_col: str, y_col: str, order: list, name: str, title: Option
     fig.tight_layout()
     for a in fig.axes.flat:
         a.set_title(a.title.get_text().replace(f'Dataset = ', ''), size=28)
-        a.set_ylim((0, 1))
+        a.set_ylim((0, 100))
+    if title is not None:
+        fig.figure.suptitle(title)
+        fig.figure.subplots_adjust(top=0.82)
     if save_plot:
         plt.savefig(f'{folder}/{name}.png', format='png')
         plt.savefig(f'{folder}/{name}.svg', format='svg')
         plt.savefig(f'{folder}/{name}.eps', format='eps')
-    if title is not None:
-        fig.figure.suptitle(f'Percentage Disparate Impact for {title}')
-        fig.figure.subplots_adjust(top=0.85)
     if show_plot:
         plt.show()
 
@@ -73,7 +73,7 @@ if __name__ == '__main__':
     first_bin, didi_bin, first_gen, didi_gen = {}, {}, {}, {}
     for dataset in DATASETS:
         print(f'{dataset.upper()}:')
-        exp = get(f'{dataset.lower()} continuous')
+        exp = get(f'{dataset.split(" ")[0].lower()} continuous')
         x, y = exp.data
         mtr_bin = [BinnedDIDI(exp.classification, exp.excluded, bins=b, name=f'bin {b}') for b in BINS]
         mtr_gen = [GeneralizedDIDI(exp.classification, exp.excluded, degree=k, name=f'gen {k}') for k in KERNELS]
@@ -82,15 +82,19 @@ if __name__ == '__main__':
             mst = FirstOrderMaster(exp.classification, exp.excluded, degree=kernel, threshold=0.2, relative=1)
             with elapsed_time(prefix='first (', suffix=') & '):
                 adj = mst.adjust_targets(x=x, y=y, p=None)
-            first_bin[(dataset, kernel)] = {m.__name__: m(x, y, adj) for m in mtr_bin}
-            first_gen[(dataset, kernel)] = {m.__name__: m(x, y, adj) for m in mtr_gen}
+            first_bin[(dataset, kernel)] = {m.__name__: 100 * m(x, y, adj) for m in mtr_bin}
+            first_gen[(dataset, kernel)] = {m.__name__: 100 * m(x, y, adj) for m in mtr_gen}
             mst = GeneralizedDIDIMaster(exp.classification, exp.excluded, degree=kernel, threshold=0.2, relative=1)
             with elapsed_time(prefix='didi (', suffix=')\n'):
                 adj = mst.adjust_targets(x=x, y=y, p=None)
-            didi_bin[(dataset, kernel)] = {m.__name__: m(x, y, adj) for m in mtr_bin}
-            didi_gen[(dataset, kernel)] = {m.__name__: m(x, y, adj) for m in mtr_gen}
+            didi_bin[(dataset, kernel)] = {m.__name__: 100 * m(x, y, adj) for m in mtr_bin}
+            didi_gen[(dataset, kernel)] = {m.__name__: 100 * m(x, y, adj) for m in mtr_gen}
 
-    plot(df=first_bin, x_col='Bins', y_col='% DIDI', order=BINS, name='first_bin', title='Higher-order Exclusion')
-    plot(df=didi_bin, x_col='Bins', y_col='% DIDI', order=BINS, name='didi_bin', title='Generalized DIDI')
-    plot(df=first_gen, x_col='k', y_col='gDIDI_k', order=KERNELS, name='first_gen', title='Higher-order Exclusion')
-    plot(df=didi_gen, x_col='k', y_col='gDIDI_k', order=KERNELS, name='didi_gen', title='Generalized DIDI')
+    t = '$\\operatorname{GeDI}(x, z; V^k) \\leq 0.2 \\operatorname{GeDI}(x, y; V^1)$'
+    plot(df=didi_bin, x_col='Bins', y_col='% DIDI', order=BINS, name='didi_bin', title=t)
+    t = '$\\operatorname{GeDI}(x, z; V^k) = \\operatorname{GeDI}(x, z; V^1) \\leq 0.2 \\operatorname{GeDI}(x, y; V^1)$'
+    plot(df=first_bin, x_col='Bins', y_col='% DIDI', order=BINS, name='first_bin', title=t)
+    # plot(df=first_bin, x_col='Bins', y_col='% DIDI', order=BINS, name='first_bin', title='Higher-order Exclusion')
+    # plot(df=didi_bin, x_col='Bins', y_col='% DIDI', order=BINS, name='didi_bin', title='Generalized DIDI')
+    # plot(df=first_gen, x_col='k', y_col='gDIDI_k', order=KERNELS, name='first_gen', title='Higher-order Exclusion')
+    # plot(df=didi_gen, x_col='k', y_col='gDIDI_k', order=KERNELS, name='didi_gen', title='Generalized DIDI')

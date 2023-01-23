@@ -30,9 +30,9 @@ class NeuralSBR(NeuralNetwork):
                  verbose: bool = False):
         """
         :param penalty:
-            The type of penalty to use, either 'first' (constraints the generalized didi at the first order while
-            excluding higher order correlations via multiple penalizers), 'didi' (constraints the generalized didi with
-            a single penalizer), or 'hgr' (constraints the chi^2 with a single penalizer).
+            The type of penalty to use, either 'coarse' (coarse-grained GeDI constraint with a single penalizer),
+            'fine' (fine-grained GeDI constraint on first order with multiple penalizers), or 'hgr' (chi^2 constraint
+            with a single penalizer).
 
         :param excluded:
             The feature to be excluded.
@@ -78,12 +78,12 @@ class NeuralSBR(NeuralNetwork):
 
         # validate constraint and degrees
         assert degree > 0, f"The kernel degree must be a positive integer, got {degree}"
-        if penalty == 'first':
-            reg_vector = self._first_penalty
-            penalizers = degree
-        elif penalty == 'didi':
+        if penalty == 'coarse':
             reg_vector = self._didi_penalty
             penalizers = 1
+        elif penalty == 'fine':
+            reg_vector = self._first_penalty
+            penalizers = degree
         elif penalty == 'hgr':
             if degree != 1:
                 logging.log(level=logging.WARNING, msg=f"HGR does not accept degree > 1, use 1 instead of {degree}")

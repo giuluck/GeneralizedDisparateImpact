@@ -9,16 +9,19 @@ COLUMNS = {
     'split': 'Split',
     'model': 'Model',
     'dataset': 'Dataset',
-    # 'crossentropy': 'CE',
+    'crossentropy': 'CE',
     'accuracy': 'ACC',
-    # 'mse': 'MSE',
+    'mse': 'MSE',
     'r2': 'R2',
-    'rel_hgr': 'HGR',
-    'rel_didi': 'DIDI',
-    'rel_didi_2': '2-DIDI',
-    'rel_didi_3': '3-DIDI',
-    'rel_didi_5': '5-DIDI',
-    'rel_didi_10': '10-DIDI',
+    'abs_hgr': 'HGR',
+    'rel_hgr': '% HGR',
+    'rel_didi': '% DIDI',
+    'rel_generalized_didi_1': '% GeDI-V1',
+    'rel_binned_didi_2': '% DIDI-3',
+    'rel_binned_didi_3': '% DIDI-3',
+    'rel_binned_didi_5': '% DIDI-5',
+    'rel_binned_didi_10': '% DIDI-10',
+    'rel_generalized_didi_5': '% GeDI-V5',
     'elapsed_time': 'Time'
 }
 
@@ -26,16 +29,10 @@ COLUMNS = {
 MAX_METRICS = ['ACC', 'R2']
 
 # categorical orderings for sorting
-MODELS_ORDERING = ['RF', 'GB', 'NN', 'MT RF', 'MT GB', 'MT NN', 'SBR LR', 'SBR HGR']
+MODELS_ORDERING = ['RF', 'GB', 'NN', 'SBR FIRST', 'SBR DIDI',
+                   'MT FIRST RF', 'MT FIRST GB', 'MT FIRST NN',
+                   'MT DIDI RF', 'MT DIDI GB', 'MT DIDI NN']
 DATASET_ORDERING = ['communities categorical', 'communities continuous', 'adult categorical', 'adult continuous']
-
-# in order to avoid having five different column values for the adult categorical dataset
-# we first retrieve them and then aggregate them via mean
-RACES_CATEGORICAL = ['Other', 'White', 'Black', 'Asian-Pac-Islander', 'Amer-Indian-Eskimo']
-HGR_CATEGORICAL = {
-    'train/rel_hgr': [f'train/rel_hgr_race_{race}' for race in RACES_CATEGORICAL],
-    'val/rel_hgr': [f'val/rel_hgr_race_{race}' for race in RACES_CATEGORICAL]
-}
 
 folder = '../temp'
 
@@ -78,13 +75,11 @@ def to_latex(data: pd.DataFrame, name: str, caption: str):
 
 if __name__ == '__main__':
     # download results using wandb api
-    runs = wandb.Api().runs('shape-constraints/nci_experiments')
+    runs = wandb.Api().runs('shape-constraints/experiments')
     df = pd.DataFrame([{'name': run.name, **run.config, **run.summary} for run in runs])
-    # handle hgr in categorical fairness scenario
-    for column, keys in HGR_CATEGORICAL.items():
-        replacements = df[keys].mean(axis=1)
-        df[column] = np.where(np.isnan(df[column]), replacements, df[column])
-    df['model'] = df['model'].map(lambda s: s.replace('cov', 'lr'))
+    # set full dataset name by hand due to mistakenly stored dataset name
+    df.iloc[:]
+
     # split and concatenate the train and validation data (this will be used for pivoting)
     tr = df.rename(columns=lambda s: s.replace('train/', ''))
     vl = df.rename(columns=lambda s: s.replace('val/', ''))

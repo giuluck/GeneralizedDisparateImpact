@@ -60,8 +60,11 @@ class Experiment:
         """
         raise NotImplementedError("please implement static method 'load_data'")
 
-    def __init__(self, continuous: bool, classification: bool, excluded: str, units: List[int]):
+    def __init__(self, name: str, continuous: bool, classification: bool, excluded: str, units: List[int]):
         """
+        :param name:
+            The experiment name.
+
         :param continuous:
             Whether the excluded feature is binary or continuous.
 
@@ -99,7 +102,7 @@ class Experiment:
                 DIDI(classification, excluded, percentage=False, name='abs_didi')
             ]
 
-        self.__name__: str = ' '.join(re.split('(?=[A-Z])', self.__class__.__name__)).lower().strip(' ')
+        self.__name__: str = name
         """The dataset name."""
 
         self.data: Tuple[pd.DataFrame, np.ndarray] = self.load_data()
@@ -167,7 +170,7 @@ class Experiment:
             return NeuralSBR(penalty=penalty, excluded=self.excluded, classification=self.classification,
                              batch_size=len(self.data[0]), **kwargs)
         elif model.startswith('mt '):
-            _, master, learner = model.split(' ')
+            _, learner, master = model.split(' ')
             if learner == 'nn':
                 kwargs['hidden_units'] = kwargs.get('hidden_units') or self.units
                 kwargs['batch_size'] = kwargs.get('batch_size') or self.batch

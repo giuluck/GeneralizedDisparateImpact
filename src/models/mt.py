@@ -185,7 +185,7 @@ class MovingTargets(Model):
                  **learner_kwargs):
         """
         :param master:
-            The master alias, either 'first' for higher-order exclusion or 'didi' for regular generalized didi.
+            The master alias, either 'coarse' for regular GeDI or 'fine' for fine-grained GeDI on first order.
 
         :param learner:
             The learner alias, one in 'lr', 'rf', 'gb', and 'nn'.
@@ -229,17 +229,6 @@ class MovingTargets(Model):
         :param learner_kwargs:
             Additional arguments to be passed to the Learner constructor.
         """
-        super(MovingTargets, self).__init__(
-            name=f'mt {master} {learner}',
-            classification=classification,
-            excluded=excluded,
-            degree=degree,
-            threshold=threshold,
-            relative=relative,
-            iterations=iterations,
-            **learner_kwargs
-        )
-
         if learner == 'lr':
             lrn = LogisticRegression(max_iter=10000) if classification else LinearRegression()
         elif learner == 'rf':
@@ -256,13 +245,26 @@ class MovingTargets(Model):
         else:
             raise AssertionError(f"Unknown learner alias '{learner}'")
 
-        if master == 'first':
-            mst = FirstOrderMaster
-        elif master == 'didi':
+        if master == 'coarse':
             mst = GeneralizedDIDIMaster
+        elif master == 'fine':
+            mst = FirstOrderMaster
         else:
             raise AssertionError(f"Unknown master alias '{master}'")
         mst = mst(classification, excluded, degree=degree, threshold=threshold, relative=relative)
+
+        super(MovingTargets, self).__init__(
+            name=f'mt {master} {learner}',
+            classification=classification,
+            excluded=excluded,
+            degree=degree,
+            threshold=threshold,
+            relative=relative,
+            iterations=iterations,
+            learner=lrn.__class__.__name__,
+            master=mst.__class__.__name__,
+            **learner_kwargs
+        )
 
         self.macs: MACS = MACS(init_step='pretraining', learner=lrn, master=mst, metrics=metrics)
         """The MACS instance."""

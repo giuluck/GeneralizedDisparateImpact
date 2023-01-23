@@ -9,14 +9,14 @@ import time
 from src.experiments import get
 
 experiments = {
-    'communities categorical': ['rf', 'gb', 'nn', 'sbr first', 'mt first rf', 'mt first gb', 'mt first nn'],
-    'communities continuous': ['rf', 'gb', 'nn', 'sbr first', 'mt first rf', 'mt first gb', 'mt first nn'],
-    'adult categorical': ['rf', 'gb', 'nn', 'sbr first', 'sbr didi',
-                          'mt first rf', 'mt first gb', 'mt first nn',
-                          'mt didi rf', 'mt didi gb', 'mt didi nn'],
-    'adult continuous': ['rf', 'gb', 'nn', 'sbr first', 'sbr didi',
-                         'mt first rf', 'mt first gb', 'mt first nn',
-                         'mt didi rf', 'mt didi gb', 'mt didi nn'],
+    'communities categorical': ['rf', 'gb', 'nn', 'sbr fine', 'mt rf fine', 'mt gb fine', 'mt nn fine'],
+    'communities continuous': ['rf', 'gb', 'nn', 'sbr fine', 'sbr coarse',
+                               'mt rf fine', 'mt gb fine', 'mt nn fine',
+                               'mt rf coarse', 'mt gb coarse', 'mt nn coarse'],
+    'adult categorical': ['rf', 'gb', 'nn', 'sbr fine', 'mt rf fine', 'mt gb fine', 'mt nn fine'],
+    'adult continuous': ['rf', 'gb', 'nn', 'sbr fine', 'sbr coarse',
+                         'mt rf fine', 'mt gb fine', 'mt nn fine',
+                         'mt rf coarse', 'mt gb coarse', 'mt nn coarse'],
 }
 
 if __name__ == '__main__':
