@@ -26,7 +26,7 @@ class Adult(Experiment):
             Whether the excluded feature is binary or continuous.
         """
         super(Adult, self).__init__(
-            name='adult ' + 'continuous' if continuous else 'categorical',
+            name='adult ' + ('continuous' if continuous else 'categorical'),
             excluded='age' if continuous else 'sex',
             continuous=continuous,
             classification=True,

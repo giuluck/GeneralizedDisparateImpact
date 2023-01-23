@@ -25,7 +25,7 @@ class Communities(Experiment):
             Whether the excluded feature is binary or continuous.
         """
         super(Communities, self).__init__(
-            name='communities ' + 'continuous' if continuous else 'categorical',
+            name='communities ' + ('continuous' if continuous else 'categorical'),
             excluded='pctBlack' if continuous else 'race',
             continuous=continuous,
             classification=False,
