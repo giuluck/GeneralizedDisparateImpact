@@ -254,7 +254,7 @@ class MovingTargets(Model):
         mst = mst(classification, excluded, degree=degree, threshold=threshold, relative=relative)
 
         super(MovingTargets, self).__init__(
-            name=f'mt {master} {learner}',
+            name=f'mt {learner} {master}',
             classification=classification,
             excluded=excluded,
             degree=degree,

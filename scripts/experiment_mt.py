@@ -36,10 +36,10 @@ if __name__ == '__main__':
                     start = time.time()
                     x, y = fold['train']
                     # build the model without callback and add it later in order to use the model config
-                    mdl = exp.get_model(model=f'mt {model}', fold=fold, degree=degree)
+                    mdl = exp.get_model(model=f'mt {model} fine', fold=fold, degree=degree)
                     assert isinstance(mdl, MovingTargets), f"There has been some errors with retrieved model {mdl}"
                     mdl.add_callback(WandBLogger(
-                        project='nci_mt',
+                        project='moving-targets',
                         entity='shape-constraints',
                         run_name=f'{model} - {dataset} - {degree} ({idx})',
                         dataset=dataset,
