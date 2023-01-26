@@ -77,8 +77,6 @@ if __name__ == '__main__':
             # noinspection PyTypeChecker
             pd.DataFrame.from_dict(data).to_csv(f'{folder}/running_{kernel}.csv', index=False)
         if save_plot:
-            plt.savefig(f'{folder}/running_{kernel}.png', format='png')
-            plt.savefig(f'{folder}/running_{kernel}.svg', format='svg')
             plt.savefig(f'{folder}/running_{kernel}.eps', format='eps')
         if show_plot:
             plt.show()
