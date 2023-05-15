@@ -1,3 +1,5 @@
+"""This script is used to create the plots of the running example (Figure 2)."""
+
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -5,7 +7,7 @@ import seaborn.categorical
 from matplotlib import pyplot as plt
 
 from moving_targets.learners import LinearRegression
-from src.models import FirstOrderMaster
+from src.models import FineGrainedMaster
 
 
 # noinspection PyProtectedMember
@@ -33,8 +35,8 @@ categorical_violin = False
 zorder = 1
 folder = '../temp'
 
-save_data = True
-save_plot = True
+save_data = False
+save_plot = False
 show_plot = True
 
 if __name__ == '__main__':
@@ -53,7 +55,7 @@ if __name__ == '__main__':
             name = 'pre'
             title = 'No Constraint'
         else:
-            master = FirstOrderMaster(classification=False, degree=kernel, excluded='x', threshold=0.0, relative=0)
+            master = FineGrainedMaster(classification=False, degree=kernel, excluded='x', threshold=0.0, relative=0)
             y = master.adjust_targets(x=inp, y=out, p=None)
             title = '$\\operatorname{GeDI}(x, y; V^' + str(kernel) + ') = 0$'
             name = f'k{kernel}'

@@ -1,3 +1,5 @@
+"""This script runs the experiments on neural networks calibration and stores the results on Weights & Biases."""
+
 import os
 
 os.environ['WANDB_SILENT'] = 'true'
@@ -6,6 +8,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import shutil
 import time
 
+from experiments.config import WandBConfig
 from src.models import NeuralNetwork
 from src.experiments import get
 
@@ -29,6 +32,8 @@ if __name__ == '__main__':
                     fold=fold,
                     metrics=exp.metrics,
                     dataset=ds,
+                    project=WandBConfig.gedi_calibration,
+                    entity=WandBConfig.entity,
                     run=f'[{ds}] - {hu} - [{bs}]'
                 )
                 mdl = NeuralNetwork(

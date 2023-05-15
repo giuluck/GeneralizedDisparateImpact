@@ -1,9 +1,7 @@
-import pandas as pd
-import seaborn as sns
-import wandb
+"""This script is used to create the final csv file with all the data retrieved from Weights & Biases."""
 
-sns.set_context('poster')
-sns.set_style('whitegrid')
+import pandas as pd
+import wandb
 
 MODELS = {
     'rf': ('RF', 'None'),
@@ -51,7 +49,7 @@ COLUMNS = {
 folder = '../temp'
 
 if __name__ == '__main__':
-    runs = wandb.Api().runs('shape-constraints/experiments')
+    runs = wandb.Api().runs('shape-constraints/gedi-experiments')
     df = pd.DataFrame([{'name': run.name, **run.config, **run.summary} for run in runs])
 
     train = df.rename(columns=lambda s: s.replace('train/', ''))

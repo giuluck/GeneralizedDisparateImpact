@@ -1,3 +1,5 @@
+"""This script is used to create the Binned DIDI plots after GeDI constraint (Figure 3)."""
+
 import time
 from typing import Optional
 
@@ -8,7 +10,7 @@ from sklearn.metrics import mean_squared_error
 
 from src.experiments import get
 from src.metrics import BinnedDIDI, GeneralizedDIDI
-from src.models import FirstOrderMaster, GeneralizedDIDIMaster
+from src.models import FineGrainedMaster, CoarseGrainedMaster
 
 sns.set_context('poster')
 sns.set_style('whitegrid')
@@ -19,8 +21,8 @@ KERNELS = [1, 2, 3, 4, 5]
 BINS = [2, 3, 5, 10]
 
 folder = '../temp'
-save_plot = True
-show_plot = False
+save_plot = False
+show_plot = True
 
 
 def plot(df: dict, x_col: str, y_col: str, order: list, name: str, title: Optional[str] = None):
@@ -67,14 +69,14 @@ if __name__ == '__main__':
         mtr_gen = [GeneralizedDIDI(exp.classification, exp.excluded, degree=k, name=f'gen {k}') for k in KERNELS]
         for kernel in KERNELS:
             print(f'  - k = {kernel}:', end=' ')
-            mst = GeneralizedDIDIMaster(exp.classification, exp.excluded, degree=kernel, threshold=0.2, relative=1)
+            mst = CoarseGrainedMaster(exp.classification, exp.excluded, degree=kernel, threshold=0.2, relative=1)
             start = time.time()
             adj = mst.adjust_targets(x=x, y=y, p=None)
             mse = mean_squared_error(y, adj)
             print(f'coarse {mse:.4f} ({time.time() - start:.2f}s) &', end=' ')
             coarse_didi[(dataset, kernel)] = {m.__name__: m(x, y, adj) for m in mtr_bin}
             coarse_gedi[(dataset, kernel)] = {m.__name__: m(x, y, adj) for m in mtr_gen}
-            mst = FirstOrderMaster(exp.classification, exp.excluded, degree=kernel, threshold=0.2, relative=1)
+            mst = FineGrainedMaster(exp.classification, exp.excluded, degree=kernel, threshold=0.2, relative=1)
             start = time.time()
             adj = mst.adjust_targets(x=x, y=y, p=None)
             mse = mean_squared_error(y, adj)
@@ -84,7 +86,3 @@ if __name__ == '__main__':
 
     plot(df=fine_didi, x_col='Bins', y_col='% DIDI', order=BINS, name='fine_didi', title=None)
     plot(df=coarse_didi, x_col='Bins', y_col='% DIDI', order=BINS, name='coarse_didi', title=None)
-    t = '$\\operatorname{GeDI}(x, z; V^k) \\leq 0.2 \\operatorname{GeDI}(x, y; V^1)$'
-    plot(df=coarse_didi, x_col='Bins', y_col='% DIDI', order=BINS, name='coarse_didi_title', title=t)
-    t = '$\\operatorname{GeDI}(x, z; V^k) = \\operatorname{GeDI}(x, z; V^1) \\leq 0.2 \\operatorname{GeDI}(x, y; V^1)$'
-    plot(df=fine_didi, x_col='Bins', y_col='% DIDI', order=BINS, name='fine_didi_title', title=t)

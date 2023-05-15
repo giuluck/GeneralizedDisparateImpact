@@ -1,3 +1,5 @@
+"""This script is used to create the results tables with all the data retrieved from Weights & Biases."""
+
 from typing import Callable
 
 import numpy as np
@@ -9,18 +11,10 @@ COLUMNS = {
     'split': 'Split',
     'model': 'Model',
     'dataset': 'Dataset',
-    # 'crossentropy': 'CE',
     'accuracy': 'ACC',
-    # 'mse': 'MSE',
     'r2': 'R2',
     'rel_didi': 'GeDI-V1 \\%',
-    # 'rel_binned_didi_2': 'DIDI-2 \\%',
-    # 'rel_binned_didi_3': 'DIDI-3 \\%',
-    # 'rel_binned_didi_5': 'DIDI-5 \\%',
-    # 'rel_binned_didi_10': 'DIDI-10 \\%',
     'rel_generalized_didi_5': 'GeDI-V5 \\%',
-    # 'abs_hgr': 'HGR',
-    # 'rel_hgr': 'HGR \\%',
     'elapsed_time': 'Time'
 }
 
@@ -107,7 +101,7 @@ def to_latex(data: pd.DataFrame, name: str, caption: str):
 
 if __name__ == '__main__':
     # download results using wandb api
-    runs = wandb.Api().runs('shape-constraints/experiments')
+    runs = wandb.Api().runs('shape-constraints/gedi-experiments')
     df = pd.DataFrame([{'name': run.name, **run.config, **run.summary} for run in runs])
 
     # split and concatenate the train and validation data (this will be used for pivoting)
@@ -147,7 +141,7 @@ if __name__ == '__main__':
         caption='Results for tasks with \\textit{continuous} protected attribute.'
     )
 
-    # export table for continuous datasets with fine-grain results only
+    # export table for continuous datasets with fine-grained results only
     table_1 = get_table(data=df, dataset='communities continuous')
     table_2 = get_table(data=df, dataset='adult continuous')
     table = pd.concat((table_1, table_2), keys=['\\textit{Communities \\& Crimes}', '\\textit{Adult}'], axis=1)
@@ -158,45 +152,3 @@ if __name__ == '__main__':
         name='continuous_fine',
         caption='Results for tasks with \\textit{continuous} protected attribute.'
     )
-
-    # # export table for communities tasks
-    # keys = ['', 'Binary Protected Attribute', 'Continuous Protected Attribute']
-    # table_1 = get_table(data=df, dataset='communities categorical')
-    # table_2 = get_table(data=df, dataset='communities continuous')
-    # table = pd.concat((table_1, table_2), keys=keys, axis=1)
-    # table.index = table.index.get_level_values(0)
-    # to_latex(
-    #     data=table,
-    #     name='communities',
-    #     caption='Results on the \\textit{Communities \\& Crimes} dataset for binary (\\textit{race}) '
-    #             'and continuous protected attribute (\\textit{pctBlack}).'
-    # )
-    #
-    # # export table for adult tasks
-    # keys = ['', 'Binary Protected Attribute', 'Continuous Protected Attribute']
-    # table_1 = get_table(data=df, dataset='adult categorical')
-    # table_2 = get_table(data=df, dataset='adult continuous')
-    # table = pd.concat((table_1, table_2), keys=keys, axis=1)
-    # table.index = table.index.get_level_values(0)
-    # to_latex(
-    #     data=table,
-    #     name='adult',
-    #     caption='Results on the \\textit{Adult} dataset for binary (\\textit{sex}) '
-    #             'and continuous protected attribute (\\textit{age}).'
-    # )
-    #
-    # # export table for communities continuous
-    # table = get_table(data=df, dataset='communities continuous')
-    # to_latex(
-    #     data=table,
-    #     name='communities_continuous',
-    #     caption='Results for \\textit{Communities \\& Crimes} with continuous protected attribute.'
-    # )
-    #
-    # # export table for adult continuous
-    # table = get_table(data=df, dataset='adult continuous')
-    # to_latex(
-    #     data=table,
-    #     name='adult_continuous',
-    #     caption='Results for \\textit{Adult} with continuous protected attribute.'
-    # )

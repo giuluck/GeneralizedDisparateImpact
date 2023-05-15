@@ -1,3 +1,5 @@
+"""This script is used to create the plots of computed HGR vs computed GeDI (Figure 4)."""
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -25,12 +27,12 @@ constraints = ['None', 'Fine', 'Coarse']
 split_constraints = True
 
 folder = '../temp'
-save_plot = True
+save_plot = False
 show_plot = True
 
 if __name__ == '__main__':
     # download results using wandb api and remove
-    runs = wandb.Api().runs('shape-constraints/experiments')
+    runs = wandb.Api().runs('shape-constraints/gedi-experiments')
     df = pd.DataFrame([{'name': run.name, **run.config, **run.summary} for run in runs])
 
     # discard train/val data by concatenating it

@@ -1,3 +1,5 @@
+"""This script is used to manually test the behaviour of the approaches based on moving targets."""
+
 import seaborn as sns
 
 from moving_targets.metrics import DIDI
@@ -13,7 +15,7 @@ if __name__ == '__main__':
     fold = exp.get_folds(folds=1)
     degree = 5 if exp.continuous else 1
     model = exp.get_model(
-        model='mt first rf',
+        model='mt rf fine',
         fold=fold,
         degree=degree,
         iterations=3,

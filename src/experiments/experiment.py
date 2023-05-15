@@ -1,5 +1,4 @@
 import random
-import re
 import time
 from typing import List, Tuple, Union
 from typing import Optional
@@ -19,9 +18,6 @@ from src.models import Model, RandomForest, GradientBoosting, NeuralNetwork, Mov
 class Experiment:
     SEED: int = 0
     """The random seed."""
-
-    ENTITY: str = 'shape-constraints'
-    """The Weights&Biases entity name."""
 
     BINS: List[int] = [2, 3, 5, 10]
     """The number of bins to be used in the BinnedDIDI metric."""
@@ -278,7 +274,7 @@ class Experiment:
                      fold: Dataset,
                      index: Optional[int],
                      show: bool,
-                     log: Optional[str]):
+                     log: Optional[Tuple[str, str]]):
         """Runs a single instance of k-fold cross-validation experiment.
 
         :param x:
@@ -300,14 +296,14 @@ class Experiment:
             Whether or not to show the results on the console at the end of each instance run.
 
         :param log:
-            Either a Weights & Biases project name on which to log results or None for no logging.
+            Either a tuple of Weights & Biases entity and project names or None for no logging.
 
         """
         # LOGGING & PRINTING
         if log is not None:
             wandb.init(name=f'{model.__name__} - {self.__name__} ({index})',
-                       entity=self.ENTITY,
-                       project=log,
+                       entity=log[0],
+                       project=log[1],
                        config={'dataset': self.__name__, 'model': model.__name__, 'fold': index, **model.config})
         # EXPERIMENT RUN
         self.setup(seed=self.SEED)

@@ -1,5 +1,8 @@
+"""This script runs the experiments on moving targets approaches only and stores the results on Weights & Biases."""
+
 import os
 
+from experiments.config import WandBConfig
 from src.models import MovingTargets
 
 os.environ['WANDB_SILENT'] = 'true'
@@ -39,8 +42,8 @@ if __name__ == '__main__':
                     mdl = exp.get_model(model=f'mt {model} fine', fold=fold, degree=degree)
                     assert isinstance(mdl, MovingTargets), f"There has been some errors with retrieved model {mdl}"
                     mdl.add_callback(WandBLogger(
-                        project='moving-targets',
-                        entity='shape-constraints',
+                        project=WandBConfig.gedi_mt,
+                        entity=WandBConfig.entity,
                         run_name=f'{model} - {dataset} - {degree} ({idx})',
                         dataset=dataset,
                         model=model,

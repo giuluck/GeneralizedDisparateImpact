@@ -1,3 +1,5 @@
+"""This script runs all the final experiments presented in the paper and stores the results on Weights & Biases."""
+
 import os
 
 os.environ['WANDB_SILENT'] = 'true'
@@ -6,6 +8,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import shutil
 import time
 
+from experiments.config import WandBConfig
 from src.experiments import get
 
 experiments = {
@@ -34,7 +37,15 @@ if __name__ == '__main__':
                 start = time.time()
                 x, y = fold['train']
                 mdl = exp.get_model(model=model)
-                exp.run_instance(model=mdl, x=x, y=y, fold=fold, index=idx, log='experiments', show=False)
+                exp.run_instance(
+                    model=mdl,
+                    x=x,
+                    y=y,
+                    fold=fold,
+                    index=idx,
+                    log=(WandBConfig.entity, WandBConfig.gedi_experiments),
+                    show=False
+                )
                 print(f' -- elapsed time = {time.time() - start:.2f}s')
         print('-------------------------------------------------')
     shutil.rmtree('wandb')

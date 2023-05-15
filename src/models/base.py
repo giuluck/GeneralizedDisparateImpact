@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 from moving_targets.learners import RandomForestRegressor, TorchMLP
 from moving_targets.metrics import Metric
-from src.models import Model
+from src.models.model import Model
 
 
 class RandomForest(Model):
@@ -96,7 +96,13 @@ class GradientBoosting(Model):
 
 class NeuralNetwork(Model, TorchMLP):
     class WandbLogger:
-        def __init__(self, fold: Dict[str, Tuple[Any, np.ndarray]], metrics: List[Metric], run: str, **config):
+        def __init__(self,
+                     fold: Dict[str, Tuple[Any, np.ndarray]],
+                     metrics: List[Metric],
+                     project: str,
+                     entity: str,
+                     run: str,
+                     **config):
             super(NeuralNetwork.WandbLogger, self).__init__()
 
             self.fold: Dict[str, Tuple[pd.DataFrame, np.ndarray]] = fold
@@ -104,6 +110,12 @@ class NeuralNetwork(Model, TorchMLP):
 
             self.metrics: List[Metric] = metrics
             """The evaluation metrics."""
+
+            self.project: str = project
+            """The Weights&Biases project name."""
+
+            self.entity: str = entity
+            """The Weights&Biases entity name."""
 
             self.run: str = run
             """The Weights&Biases run name."""
@@ -114,7 +126,7 @@ class NeuralNetwork(Model, TorchMLP):
         def init(self, model):
             config = self.config.copy()
             config.update(model.config)
-            wandb.init(project='nci_calibration', entity='shape-constraints', name=self.run, config=config)
+            wandb.init(project=self.project, entity=self.entity, name=self.run, config=config)
 
         def log(self, model):
             log = {}

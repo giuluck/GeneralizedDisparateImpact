@@ -1,3 +1,5 @@
+"""This script is used to manually test the behaviour of all the implemented approaches."""
+
 import time
 
 import seaborn as sns
@@ -10,7 +12,7 @@ sns.set_style('whitegrid')
 if __name__ == '__main__':
     exp = get('adult continuous')
     fold = exp.get_folds(folds=1)
-    model = exp.get_model(model='mt rf fine', verbose=True)
+    model = exp.get_model(model='gb')
     print('MODEL CONFIGURATION:')
     for k, v in model.config.items():
         print(f'  > {k} --> {v}')

@@ -18,8 +18,8 @@ from src.metrics import GeneralizedDIDI as gDIDI
 from src.models.model import Model
 
 
-class AbstractMaster(Master):
-    """Master problem for causal exclusion of features up to a certain polynomial degree."""
+class GeDIMaster(Master):
+    """Master problem for Generalized Disparate Impact (GeDI) constraint up to a certain polynomial degree."""
 
     def __init__(self, classification: bool, excluded: str, degree: int, threshold: float, relative: Union[bool, int]):
         """
@@ -109,12 +109,12 @@ class AbstractMaster(Master):
                        sample_weight: Optional[np.ndarray] = None) -> np.ndarray:
         # due to numerical tolerances, targets may be returned as <z + eps>, therefore we round binary targets in order
         # to remove these numerical errors and make sure that they will not cause problems to the learners
-        z = super(AbstractMaster, self).adjust_targets(x, y, p)
+        z = super(GeDIMaster, self).adjust_targets(x, y, p)
         return z.round() if self.classification else z
 
 
-class GeneralizedDIDIMaster(AbstractMaster):
-    """Master formulation for the standard generalized DIDI constraint relying on a shadow linear regression model."""
+class CoarseGrainedMaster(GeDIMaster):
+    """Master formulation for the Coarse-grained GeDI constraint relying on a shadow linear regression model."""
 
     def _formulation(self, x: np.ndarray, y: np.ndarray, p: np.ndarray, v: np.ndarray):
         # now we compute the values tilde{alpha} respectively to the adjusted targets; in order to do that, we define
@@ -134,11 +134,10 @@ class GeneralizedDIDIMaster(AbstractMaster):
         self.backend.add_constraints([didi_v <= self.threshold * didi_y])
 
 
-class FirstOrderMaster(AbstractMaster):
-    """Master formulation where the constraint on generalized DIDI is obtained by excluding the higher orders and
+class FineGrainedMaster(GeDIMaster):
+    """Master formulation for the Fine-grained GeDI constraint which is obtained by excluding the higher orders and
     keeping just the first-order correlation. This allows to impose easier constraints without the need to compute the
-    actual slopes of the shadow linear regression model.
-    """
+    actual slopes of the shadow linear regression model."""
 
     def _formulation(self, x: np.ndarray, y: np.ndarray, p: np.ndarray, v: np.ndarray):
         # compute the generalized didi for the adjusted targets value by assuming that tilde{alpha}_i = 0 for each
@@ -246,9 +245,9 @@ class MovingTargets(Model):
             raise AssertionError(f"Unknown learner alias '{learner}'")
 
         if master == 'coarse':
-            mst = GeneralizedDIDIMaster
+            mst = CoarseGrainedMaster
         elif master == 'fine':
-            mst = FirstOrderMaster
+            mst = FineGrainedMaster
         else:
             raise AssertionError(f"Unknown master alias '{master}'")
         mst = mst(classification, excluded, degree=degree, threshold=threshold, relative=relative)
@@ -282,6 +281,11 @@ class MovingTargets(Model):
         parameters to pass to the History's plot function."""
 
     def add_callback(self, callback: Callback):
+        """Adds a Moving Targets' callback.
+
+        :param callback:
+            The callback to be added.
+        """
         self.fit_params['callbacks'].append(callback)
 
     def _fit(self, x: pd.DataFrame, y: np.ndarray):
