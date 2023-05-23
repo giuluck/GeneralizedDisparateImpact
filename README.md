@@ -2,6 +2,10 @@
 
 This repository provides the code for reproducing the results obtained in the paper "Generalized Disparate Impact for Configurable Fairness Solutions in ML".
 
+## Paper Citation
+
+_The paper has been accepted to ICML 2023 and will be published soon in the conference proceedings._
+
 ## Installation Setup
 
 Before running any script, please make sure that you installed all the necessary requirements.
@@ -27,13 +31,18 @@ The library can be also installed as an external package from [PyPI](https://pyp
 
 The experimental results can be replicated by running the scripts in the `experiments` folder.
 
+Before that, it is advisable to create a personal configuration for [Weights & Biases](https://wandb.ai/site) which is used to log the results.
+This can be done by editing the `config.py` file in order to set a custom W&B entity and project names.
+
 The folder contains six different scripts:
 * `inspect_baselines.py` and `inspect_mt.py` allow, respectively, to manually inspect all the implemented approaches and (specifically) the ones based on Moving Targets;
 * `gedi_calibration.py` and `gedi_mt.py` run the hyperparameter tuning experiments for Neural Networks and Moving Targets, respectively;
 * `gedi_experiments.py` run the final experiments presented in the paper.
 The remaining file (`config.py`) is used to setup the configuration for Weights & Biases, which is used to log the results of the two tuning and the final experimental script.
 
-## Plots and Other Exports
+The original results presented in the paper can be found at [this link](https://wandb.ai/shape-constraints/gedi-experiments).
+
+## Tables and Plots
 
 The tables and plots presented in the paper can be obtained by running the scripts in the `export` folder.
 
@@ -43,10 +52,6 @@ The folder contains:
 * a script to plot the value of the GeDI indicator with respect to the HGR one (`gedi_vs_hgr.py`) as in Figure 4;
 * a script to retrieve all the values obtained from the experiments and collect them in a _.csv_ file (`results_file.py`);
 * a script to retrieve all the values obtained from the experiments and collect them in latex tables (`results_tables.py`).
-
-## How To Cite
-
-_The paper has been accepted to ICML 2023 and will be published soon in the conference proceedings._
 
 ## Contacts
 
