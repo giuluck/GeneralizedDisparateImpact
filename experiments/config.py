@@ -1,11 +1,8 @@
 """This script needs to be changed in order to define a custom Weights & Biases configuration for logging."""
 
-from dataclasses import dataclass
 
-
-@dataclass(frozen=True)
 class WandBConfig:
-    """Configuration class for custom Weights & Biases logging."""
+    """Static configuration class for custom Weights & Biases logging."""
 
     entity: str = 'shape-constraints'
     """The Weights&Biases entity name."""
