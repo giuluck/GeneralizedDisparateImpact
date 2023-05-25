@@ -55,6 +55,7 @@ The folder contains:
 
 ## Contacts
 
-In case of questions about the code or the paper, do not hesitate to contact the corresponding author.
+In case of questions about the code or the paper, do not hesitate to contact the corresponding authors:
 
-**Luca Giuliani** ([luca.giuliani13@unibo.it](mailto:luca.giuliani13@unibo.it))
+* **Luca Giuliani** ([luca.giuliani13@unibo.it](mailto:luca.giuliani13@unibo.it))
+* **Eleonora Misino** ([eleonora.misino2@unibo.it](mailto:eleonora.misino2@unibo.it))
