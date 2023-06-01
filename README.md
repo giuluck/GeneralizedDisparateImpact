@@ -1,10 +1,22 @@
 # Generalized Disparate Impact for Configurable Fairness Solutions in ML
 
-This repository provides the code for reproducing the results obtained in the paper "Generalized Disparate Impact for Configurable Fairness Solutions in ML".
+This repository provides the code for reproducing the results obtained in the paper *Generalized Disparate Impact for Configurable Fairness Solutions in ML*, published at ICML 2023 (forthcoming).
 
 ## Paper Citation
 
-_The paper has been accepted to ICML 2023 and will be published soon in the conference proceedings._
+
+If you use this codebase, please cite:
+
+```
+@misc{giuliani2023generalized,
+      title={Generalized Disparate Impact for Configurable Fairness Solutions in ML}, 
+      author={Luca Giuliani and Eleonora Misino and Michele Lombardi},
+      year={2023},
+      eprint={2305.18504},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG}
+}
+```
 
 ## Installation Setup
 
