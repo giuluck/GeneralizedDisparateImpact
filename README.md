@@ -8,12 +8,17 @@ This repository provides the code for reproducing the results obtained in the pa
 If you use this codebase, please cite:
 
 ```
-@article{giuliani2023generalized,
-  title={Generalized Disparate Impact for Configurable Fairness Solutions in ML},
-  author={Giuliani, Luca and Misino, Eleonora and Lombardi, Michele},
-  journal={arXiv e-prints},
-  pages={arXiv--2305},
-  year={2023}
+@inproceedings{10.5555/3618408.3618867,
+author = {Giuliani, Luca and Misino, Eleonora and Lombardi, Michele},
+title = {Generalized disparate impact for configurable fairness solutions in ML},
+year = {2023},
+publisher = {JMLR.org},
+abstract = {We make two contributions in the field of AI fairness over continuous protected attributes. First, we show that the Hirschfeld-Gebelein-Renyi (HGR) indicator (the only one currently available for such a case) is valuable but subject to a few crucial limitations regarding semantics, interpretability, and robustness. Second, we introduce a family of indicators that are: 1) complementary to HGR in terms of semantics; 2) fully interpretable and transparent; 3) robust over finite samples; 4) configurable to suit specific applications. Our approach also allows us to define fine-grained constraints to permit certain types of dependence and forbid others selectively. By expanding the available options for continuous protected attributes, our approach represents a significant contribution to the area of fair artificial intelligence.},
+booktitle = {Proceedings of the 40th International Conference on Machine Learning},
+articleno = {459},
+numpages = {16},
+location = {Honolulu, Hawaii, USA},
+series = {ICML'23}
 }
 ```
 
