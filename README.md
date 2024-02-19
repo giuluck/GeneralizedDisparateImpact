@@ -1,6 +1,6 @@
 # Generalized Disparate Impact for Configurable Fairness Solutions in ML
 
-This repository provides the code for reproducing the results obtained in the paper *Generalized Disparate Impact for Configurable Fairness Solutions in ML*, published at ICML 2023 (forthcoming).
+This repository provides the code for reproducing the results obtained in the paper *Generalized Disparate Impact for Configurable Fairness Solutions in ML*, published at ICML 2023.
 
 ## Paper Citation
 
